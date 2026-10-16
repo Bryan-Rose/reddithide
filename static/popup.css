@@ -1,0 +1,4 @@
+body { width: 360px; }
+.pad { padding: 12px; }
+.counts { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; margin-top: 6px; }
+.counts b { text-align: right; font-variant-numeric: tabular-nums; }

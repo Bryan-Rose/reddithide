@@ -1,0 +1,11 @@
+.page { max-width: 880px; margin: 0 auto; padding: 24px 16px 64px; }
+table.list { width: 100%; border-collapse: collapse; }
+table.list td { padding: 8px 6px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.nowrap { white-space: nowrap; }
+.card.disabled { opacity: 0.6; }
+.grid-form input:not([type='checkbox']):not([type='radio']), .grid-form select, .grid-form textarea { width: 100%; }
+.grid-form .row input { width: auto; flex: 1; }
+@media (max-width: 600px) {
+  .grid-form { grid-template-columns: 1fr; }
+  .grid-form > label { justify-content: flex-start; }
+}

@@ -1,0 +1,65 @@
+{
+  "manifest_version": 3,
+  "name": "RedditHide",
+  "version": "0.1.0",
+  "description": "Records subreddits you see on new Reddit, classifies them with an LLM you configure, and hides posts that match your rules.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "reddithide@local",
+      "strict_min_version": "128.0",
+      "data_collection_permissions": {
+        "required": [
+          "none"
+        ]
+      }
+    }
+  },
+  "icons": {
+    "48": "icon.svg",
+    "96": "icon.svg"
+  },
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "*://*.reddit.com/*"
+  ],
+  "optional_host_permissions": [
+    "*://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "scripts": [
+      "background.js"
+    ]
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://www.reddit.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_title": "RedditHide",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "48": "icon.svg",
+      "96": "icon.svg"
+    }
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

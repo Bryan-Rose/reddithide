@@ -1,0 +1,38 @@
+{
+  "name": "reddithide",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Firefox extension that classifies subreddits with an LLM and hides posts on new Reddit by rule.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "eslint src tests && web-ext lint --source-dir dist",
+    "lint:ext": "web-ext lint --source-dir dist",
+    "start": "web-ext run --source-dir dist",
+    "package": "web-ext build --source-dir dist --artifacts-dir web-ext-artifacts --overwrite-dest",
+    "format": "prettier --write .",
+    "build:debug": "node build.mjs --debug-bridge"
+  },
+  "dependencies": {
+    "idb": "^8.0.4",
+    "preact": "^11.0.1",
+    "webextension-polyfill": "^0.12.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/webextension-polyfill": "^0.12.6",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.13.0",
+    "fake-indexeddb": "^6.2.6",
+    "happy-dom": "^21.0.3",
+    "prettier": "^3.9.10",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.2",
+    "vitest": "^5.0.5",
+    "web-ext": "^10.8.0"
+  }
+}
