@@ -24,4 +24,7 @@ jobs:
     uses: Bryan-Rose/agent-kit/.github/workflows/claude-review.yml@main # switch to @v1 once tagged
     with:
       model: ${{ inputs.model || 'claude-sonnet-5-5' }}
-    secrets: inherit
+    # Only the API secret: `inherit` would hand every repo secret to agent-kit's workflow.
+    secrets:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
