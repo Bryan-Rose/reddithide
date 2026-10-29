@@ -1,0 +1,27 @@
+# Claude reviews each PR and keeps one comment up to date (advisory, not a required check).
+# Logic lives in Bryan-Rose/agent-kit. Needs the ANTHROPIC_API_KEY (or CLAUDE_CODE_OAUTH_TOKEN) secret.
+# Label a PR review:deep to re-review on the deep model; dispatch to review any PR into the run summary.
+name: Claude review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number to review (results go to the run summary, no comment)
+        required: true
+      model:
+        description: Model override (default below)
+        required: false
+
+jobs:
+  review:
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+    uses: Bryan-Rose/agent-kit/.github/workflows/claude-review.yml@main # switch to @v1 once tagged
+    with:
+      model: ${{ inputs.model || 'claude-sonnet-5-5' }}
+    secrets: inherit
