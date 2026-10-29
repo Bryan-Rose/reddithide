@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { computeBlockSet, evaluateCondition, evaluateGroup, resolveValue } from '../src/filters/evaluate';
-import type { AttributeResult, AttributeValue, Condition, RuleGroup, SubredditRecord } from '../src/shared/types';
+import type {
+  AttributeResult,
+  AttributeValue,
+  Condition,
+  RuleGroup,
+  SubredditRecord,
+} from '../src/shared/types';
 
 type Rec = Pick<SubredditRecord, 'name' | 'overrides' | 'classification' | 'meta'>;
 
-function rec(
-  name: string,
-  values: Record<string, [AttributeValue, number?]>,
-  extra: Partial<Rec> = {},
-): Rec {
+function rec(name: string, values: Record<string, [AttributeValue, number?]>, extra: Partial<Rec> = {}): Rec {
   const v: Record<string, AttributeResult> = {};
-  for (const [k, [value, confidence]] of Object.entries(values)) v[k] = { value, confidence: confidence ?? 0.9, reason: '' };
+  for (const [k, [value, confidence]] of Object.entries(values))
+    v[k] = { value, confidence: confidence ?? 0.9, reason: '' };
   return {
     name,
     classification: {
@@ -26,7 +29,12 @@ function rec(
   };
 }
 
-const cond = (attribute: string, operator: Condition['operator'], value: Condition['value'], minConfidence?: number): Condition => ({
+const cond = (
+  attribute: string,
+  operator: Condition['operator'],
+  value: Condition['value'],
+  minConfidence?: number,
+): Condition => ({
   attribute,
   operator,
   value,
@@ -39,7 +47,11 @@ describe('resolveValue', () => {
     expect(resolveValue(r, 'gross')).toEqual({ value: true, confidence: 1 });
   });
   it('falls back to classification, then pseudo attributes', () => {
-    const r = rec('a', { gross: [true, 0.7] }, { meta: { fetchedAt: 0, source: 'dom', status: 'ok', over18: true, subscribers: 500 } });
+    const r = rec(
+      'a',
+      { gross: [true, 0.7] },
+      { meta: { fetchedAt: 0, source: 'dom', status: 'ok', over18: true, subscribers: 500 } },
+    );
     expect(resolveValue(r, 'gross')).toEqual({ value: true, confidence: 0.7 });
     expect(resolveValue(r, 'over18_flag')).toEqual({ value: true, confidence: 1 });
     expect(resolveValue(r, 'subscribers')).toEqual({ value: 500, confidence: 1 });
@@ -113,14 +125,23 @@ describe('evaluateGroup', () => {
   const r = rec('a', { gross: [true], language: ['en'], topic: [['crypto']] });
   const anyRule: RuleGroup = {
     op: 'any',
-    children: [cond('language', 'not_in', ['en']), cond('gross', 'is', true), cond('topic', 'contains_any', ['crypto', 'sports'])],
+    children: [
+      cond('language', 'not_in', ['en']),
+      cond('gross', 'is', true),
+      cond('topic', 'contains_any', ['crypto', 'sports']),
+    ],
   };
   it('any collects reasons from all true children', () => {
     expect(evaluateGroup(r, anyRule)).toEqual({ match: true, reasons: ['gross', 'topic: crypto'] });
   });
   it('all needs every child', () => {
-    expect(evaluateGroup(r, { op: 'all', children: [cond('gross', 'is', true), cond('language', 'is', 'en')] }).match).toBe(true);
-    expect(evaluateGroup(r, { op: 'all', children: [cond('gross', 'is', true), cond('language', 'is', 'de')] })).toEqual({
+    expect(
+      evaluateGroup(r, { op: 'all', children: [cond('gross', 'is', true), cond('language', 'is', 'en')] })
+        .match,
+    ).toBe(true);
+    expect(
+      evaluateGroup(r, { op: 'all', children: [cond('gross', 'is', true), cond('language', 'is', 'de')] }),
+    ).toEqual({
       match: false,
       reasons: [],
     });

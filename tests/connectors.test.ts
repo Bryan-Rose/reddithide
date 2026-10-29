@@ -58,7 +58,10 @@ const good = {
 };
 
 const anthropicOk = (payload: unknown, extra: Record<string, unknown> = {}) => ({
-  content: [{ type: 'thinking', thinking: '' }, { type: 'text', text: typeof payload === 'string' ? payload : JSON.stringify(payload) }],
+  content: [
+    { type: 'thinking', thinking: '' },
+    { type: 'text', text: typeof payload === 'string' ? payload : JSON.stringify(payload) },
+  ],
   stop_reason: 'end_turn',
   usage: { input_tokens: 100, output_tokens: 20 },
   ...extra,
@@ -89,7 +92,10 @@ describe.each([
   it('classifies successfully', async () => {
     fetchMock.mockResolvedValueOnce(json(ok(good)));
     const usage: unknown[] = [];
-    const out = await classifyRecord(rec, profile, { ...ctx, onUsage: (u, okFlag) => usage.push([u, okFlag]) });
+    const out = await classifyRecord(rec, profile, {
+      ...ctx,
+      onUsage: (u, okFlag) => usage.push([u, okFlag]),
+    });
     expect(out.kind).toBe('ok');
     if (out.kind !== 'ok') return;
     expect(out.result.values.topic!.value).toEqual(['animals']);
@@ -121,7 +127,9 @@ describe.each([
   });
 
   it('maps HTTP 401 to an auth error and does not retry', async () => {
-    fetchMock.mockResolvedValueOnce(json({ error: { message: `invalid x-api-key sk-ant-secret-key-1234` } }, 401));
+    fetchMock.mockResolvedValueOnce(
+      json({ error: { message: `invalid x-api-key sk-ant-secret-key-1234` } }, 401),
+    );
     const err = await classifyRecord(rec, profile, ctx).catch((e) => e);
     expect(err).toBeInstanceOf(ProviderError);
     expect(err.kind).toBe('auth');
@@ -174,12 +182,16 @@ describe('refusals', () => {
     expect(out.kind).toBe('refused');
   });
   it('openai message.refusal', async () => {
-    fetchMock.mockResolvedValueOnce(json({ choices: [{ message: { content: null, refusal: 'I cannot help' }, finish_reason: 'stop' }] }));
+    fetchMock.mockResolvedValueOnce(
+      json({ choices: [{ message: { content: null, refusal: 'I cannot help' }, finish_reason: 'stop' }] }),
+    );
     const out = await classifyRecord(rec, openai, ctx);
     expect(out).toMatchObject({ kind: 'refused', text: 'I cannot help' });
   });
   it('openai content_filter', async () => {
-    fetchMock.mockResolvedValueOnce(json({ choices: [{ message: { content: '' }, finish_reason: 'content_filter' }] }));
+    fetchMock.mockResolvedValueOnce(
+      json({ choices: [{ message: { content: '' }, finish_reason: 'content_filter' }] }),
+    );
     expect((await classifyRecord(rec, openai, ctx)).kind).toBe('refused');
   });
 });
@@ -189,13 +201,19 @@ describe('request bodies', () => {
 
   it('anthropic native uses structured outputs, low effort, no temperature on current models', () => {
     const b = buildAnthropicBody(anthropic, req);
-    expect(b.output_config).toEqual({ format: { type: 'json_schema', schema: { type: 'object' } }, effort: 'low' });
+    expect(b.output_config).toEqual({
+      format: { type: 'json_schema', schema: { type: 'object' } },
+      effort: 'low',
+    });
     expect(b.temperature).toBeUndefined();
     expect(b.max_tokens).toBe(4096);
     expect(b.tool_choice).toBeUndefined();
   });
   it('anthropic older models get temperature and no effort', () => {
-    const b = buildAnthropicBody({ ...anthropic, model: 'claude-3-5-haiku-latest', structuredOutput: 'prompt_only' }, req);
+    const b = buildAnthropicBody(
+      { ...anthropic, model: 'claude-3-5-haiku-latest', structuredOutput: 'prompt_only' },
+      req,
+    );
     expect(b.temperature).toBe(0);
     expect(b.output_config).toBeUndefined();
     expect(b.max_tokens).toBe(1024);
@@ -214,8 +232,12 @@ describe('request bodies', () => {
       type: 'json_schema',
       json_schema: { name: 'record_classification', schema: { type: 'object' }, strict: true },
     });
-    expect(buildOpenAiBody({ ...openai, structuredOutput: 'json_object' }, req).response_format).toEqual({ type: 'json_object' });
-    expect(buildOpenAiBody({ ...openai, structuredOutput: 'prompt_only' }, req).response_format).toBeUndefined();
+    expect(buildOpenAiBody({ ...openai, structuredOutput: 'json_object' }, req).response_format).toEqual({
+      type: 'json_object',
+    });
+    expect(
+      buildOpenAiBody({ ...openai, structuredOutput: 'prompt_only' }, req).response_format,
+    ).toBeUndefined();
   });
   it('prompt modes put the schema in the system prompt', async () => {
     fetchMock.mockResolvedValueOnce(json(openaiOk(JSON.stringify(good))));
@@ -223,7 +245,11 @@ describe('request bodies', () => {
     expect(bodyOf(0).messages[0].content).toContain('must match this JSON Schema');
   });
   it('asks for a language guess only when detection is not settled', async () => {
-    fetchMock.mockResolvedValueOnce(json(openaiOk(JSON.stringify({ ...good, language_guess: { value: 'de', confidence: 0.8, reason: 'x' } }))));
+    fetchMock.mockResolvedValueOnce(
+      json(
+        openaiOk(JSON.stringify({ ...good, language_guess: { value: 'de', confidence: 0.8, reason: 'x' } })),
+      ),
+    );
     const out = await classifyRecord({ ...rec, detectedLanguage: undefined }, openai, ctx);
     expect(JSON.stringify(bodyOf(0).response_format)).toContain('language_guess');
     expect(out.kind === 'ok' && out.result.values.language!.value).toBe('de');
@@ -231,10 +257,15 @@ describe('request bodies', () => {
   it('openai bearer header only when a key is set', async () => {
     fetchMock.mockResolvedValueOnce(json(openaiOk(JSON.stringify(good))));
     await classifyRecord(rec, { ...openai, apiKey: 'k', extraHeaders: { 'X-Title': 'RedditHide' } }, ctx);
-    expect(fetchMock.mock.calls[0]![1].headers).toMatchObject({ authorization: 'Bearer k', 'X-Title': 'RedditHide' });
+    expect(fetchMock.mock.calls[0]![1].headers).toMatchObject({
+      authorization: 'Bearer k',
+      'X-Title': 'RedditHide',
+    });
   });
   it('400 mentioning response_format yields a hint', async () => {
-    fetchMock.mockResolvedValueOnce(json({ error: { message: 'response_format json_schema is not supported' } }, 400));
+    fetchMock.mockResolvedValueOnce(
+      json({ error: { message: 'response_format json_schema is not supported' } }, 400),
+    );
     const err = await classifyRecord(rec, openai, ctx).catch((e) => e);
     expect(err.kind).toBe('bad_request');
     expect(err.hint).toMatch(/json_object/);

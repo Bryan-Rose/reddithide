@@ -9,7 +9,7 @@ Layout: `src/background/` (pipeline, IndexedDB, rate limiter, message router, bl
 ## Commands
 
 ```bash
-make check             # npm ci, typecheck, unit tests, build, then lint: everything CI runs
+make check             # npm ci, prettier --check, typecheck, unit tests, build, then lint: everything CI runs
 npm run build          # production build into dist/ (load dist/manifest.json via about:debugging)
 npm run watch          # rebuild on change
 npm test               # Vitest
@@ -18,6 +18,7 @@ npm run lint           # ESLint on src/ and tests/, then web-ext lint on dist/ (
 npm run start          # web-ext run with the built extension
 npm run build:debug    # build with the debug bridge (see README "Development")
 npm run package        # zip for distribution
+npm run format         # Prettier --write; make check fails on unformatted files
 ```
 
 ## Testing
@@ -28,6 +29,7 @@ npm run package        # zip for distribution
 
 <!-- agent-kit:begin -->
 <!-- Shared block from Bryan-Rose/agent-kit (templates/agents-workflow.md). Change it there, not here. -->
+
 ## Workflow: every change goes through a pull request
 
 `main` is protected by the GitHub ruleset "Protect main": no direct pushes, force pushes or deletion. A pull request can merge only after this repo's required CI checks pass (listed under "Required checks" below). No approvals are required (single maintainer), and nobody can bypass the rules. Use the `gh` CLI, which is installed and authenticated.
@@ -50,6 +52,7 @@ gh run view --log-failed                          # if a check fails: read the f
 - **Deeper or on-demand reviews.** Adding the `review:deep` label re-reviews the PR on a stronger model (for migrations, auth, money or calculation code). `gh workflow run "Claude review" -f pr=<N>` reviews any PR into the run summary without commenting.
 - **Record the decision on the PR.** Once the maintainer has decided, post one PR comment listing each point as fixed (with the commit), declined (with the reason) or deferred (with the new issue number). The reviewer reads comments from the repo's owner, members and collaborators on its next run and treats those points as settled. Anyone else's comments are ignored.
 - **Merging is the maintainer's call.** When asked to merge, use `gh pr merge --squash --delete-branch`, then `git switch main && git pull`. Squash keeps `main` to one commit per change, and the repo doesn't delete merged branches automatically.
+
 <!-- agent-kit:end -->
 
 **Required checks:** `check`
@@ -64,7 +67,3 @@ gh run view --log-failed                          # if a check fails: read the f
 - **Reddit's `about.json`/`top.json` are blocked for logged-out clients** (HTTP 403 as of 2026-10-16), so enrichment uses the DOM. See README "Reddit JSON enrichment is not active".
 - **Anthropic connector deviates from SPEC §6.4 on purpose:** structured outputs instead of a forced tool call, and no `temperature` on current models. See README "Anthropic details".
 - **Debug bridge builds** (`npm run build:debug`) relay page messages to the background RPC. Never ship or package one.
-
-## Open questions (for the maintainer)
-
-- Prettier is configured but not enforced, and 38 files currently differ from its output. Should `make check` run `prettier --check`, after a one-off format PR?

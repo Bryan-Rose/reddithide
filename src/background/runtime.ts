@@ -16,7 +16,11 @@ async function save(): Promise<void> {
 }
 
 /** Adds an error, replacing an earlier one of the same kind and profile. */
-export async function reportError(kind: RuntimeErrorKind, message: string, profileId?: string): Promise<void> {
+export async function reportError(
+  kind: RuntimeErrorKind,
+  message: string,
+  profileId?: string,
+): Promise<void> {
   const rt = await getRuntime();
   rt.errors = rt.errors.filter((e) => !(e.kind === kind && e.profileId === profileId));
   const err: RuntimeError = { kind, message, profileId, at: Date.now() };

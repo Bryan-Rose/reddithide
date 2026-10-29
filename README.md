@@ -20,30 +20,30 @@ npm run build          # writes dist/
 
 Other scripts:
 
-| Command | What it does |
-|---|---|
-| `npm run build` | Production build into `dist/` |
-| `npm run watch` | Rebuild on change |
-| `npm test` | Vitest unit tests |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm run lint` | ESLint + `web-ext lint` (run `build` first) |
-| `npm run start` | `web-ext run` with the built extension |
-| `npm run package` | Zip for distribution (`web-ext build`) |
+| Command               | What it does                                    |
+| --------------------- | ----------------------------------------------- |
+| `npm run build`       | Production build into `dist/`                   |
+| `npm run watch`       | Rebuild on change                               |
+| `npm test`            | Vitest unit tests                               |
+| `npm run typecheck`   | `tsc --noEmit`                                  |
+| `npm run lint`        | ESLint + `web-ext lint` (run `build` first)     |
+| `npm run start`       | `web-ext run` with the built extension          |
+| `npm run package`     | Zip for distribution (`web-ext build`)          |
 | `npm run build:debug` | Build with the debug bridge (see "Development") |
 
 ## Providers
 
 Options → **Providers** → pick a preset → **Add provider**. Fill in the model and API key, then **Save**. Saving asks Firefox for permission to contact that origin. **List models** fills the model dropdown, and **Test** classifies a built-in sample subreddit and shows the raw response, the parsed result and the latency.
 
-| Preset | Base URL | Notes |
-|---|---|---|
-| Anthropic | `https://api.anthropic.com` | Suggested model `claude-haiku-5-5`. See "Anthropic details" below. |
-| OpenAI | `https://api.openai.com/v1` | `native` = JSON-schema structured output |
-| OpenRouter | `https://openrouter.ai/api/v1` | Optionally add `{"HTTP-Referer": "…", "X-Title": "RedditHide"}` as extra headers |
-| Moonshot (Kimi), DeepSeek, Groq | see presets | Default to `json_object` |
-| Ollama (local) | `http://localhost:11434/v1` | Needs the CORS setting below |
-| LM Studio (local) | `http://localhost:1234/v1` | |
-| Custom | — | Any OpenAI-compatible server (llama.cpp server, vLLM, …) |
+| Preset                          | Base URL                       | Notes                                                                            |
+| ------------------------------- | ------------------------------ | -------------------------------------------------------------------------------- |
+| Anthropic                       | `https://api.anthropic.com`    | Suggested model `claude-haiku-5-5`. See "Anthropic details" below.               |
+| OpenAI                          | `https://api.openai.com/v1`    | `native` = JSON-schema structured output                                         |
+| OpenRouter                      | `https://openrouter.ai/api/v1` | Optionally add `{"HTTP-Referer": "…", "X-Title": "RedditHide"}` as extra headers |
+| Moonshot (Kimi), DeepSeek, Groq | see presets                    | Default to `json_object`                                                         |
+| Ollama (local)                  | `http://localhost:11434/v1`    | Needs the CORS setting below                                                     |
+| LM Studio (local)               | `http://localhost:1234/v1`     |                                                                                  |
+| Custom                          | —                              | Any OpenAI-compatible server (llama.cpp server, vLLM, …)                         |
 
 If a provider rejects `native` structured output with a 400 that mentions `response_format`, the extension shows a hint. Switch that profile to `json_object` or `prompt_only`. It never switches modes on its own.
 

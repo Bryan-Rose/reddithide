@@ -37,7 +37,9 @@ describe('hideReason', () => {
   });
   it('exempts the subreddit page the user navigated to', () => {
     expect(hideReason(makeContext(blockSet(['gross']), ['gross']), 'gross')).toBeNull();
-    expect(hideReason(makeContext(blockSet(['gross'], { exemptOwnSubredditPage: false }), ['gross']), 'gross')).toBe('gross');
+    expect(
+      hideReason(makeContext(blockSet(['gross'], { exemptOwnSubredditPage: false }), ['gross']), 'gross'),
+    ).toBe('gross');
   });
   it('hides unclassified subreddits when asked', () => {
     const ctx = makeContext(blockSet([], { hideUnclassified: true }, ['nice']), []);

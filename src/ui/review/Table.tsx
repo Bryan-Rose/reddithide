@@ -22,13 +22,24 @@ export function buildColumns(attrs: AttributeDef[]): Column[] {
       label: 'Subreddit',
       width: 180,
       render: (r) => (
-        <a href={subredditUrl(r.displayName)} target="_blank" rel="noreferrer noopener" onClick={(e) => e.stopPropagation()}>
+        <a
+          href={subredditUrl(r.displayName)}
+          target="_blank"
+          rel="noreferrer noopener"
+          onClick={(e) => e.stopPropagation()}
+        >
           r/{r.displayName}
         </a>
       ),
       sort: (r) => r.name,
     },
-    { key: 'summary', label: 'Summary', width: 260, render: (r) => r.summary ?? '', sort: (r) => r.summary ?? '' },
+    {
+      key: 'summary',
+      label: 'Summary',
+      width: 260,
+      render: (r) => r.summary ?? '',
+      sort: (r) => r.summary ?? '',
+    },
   ];
   for (const a of attrs.filter((x) => x.enabled)) {
     cols.push({
@@ -40,7 +51,10 @@ export function buildColumns(attrs: AttributeDef[]): Column[] {
         if (!v) return '';
         const low = v.confidence < 0.6;
         return (
-          <span class={`chip ${v.value === true ? 'on' : ''} ${low ? 'low' : ''}`} title={`confidence ${v.confidence.toFixed(2)}`}>
+          <span
+            class={`chip ${v.value === true ? 'on' : ''} ${low ? 'low' : ''}`}
+            title={`confidence ${v.confidence.toFixed(2)}`}
+          >
             {formatValue(v.value)}
             {v.overridden ? ' ✎' : ''}
           </span>
@@ -50,12 +64,36 @@ export function buildColumns(attrs: AttributeDef[]): Column[] {
     });
   }
   cols.push(
-    { key: 'over18', label: 'over18', width: 70, render: (r) => (r.over18 === undefined ? '' : String(r.over18)), sort: (r) => String(r.over18 ?? '') },
-    { key: 'lang', label: 'Detected', width: 80, render: (r) => r.detectedLanguage ?? '', sort: (r) => r.detectedLanguage ?? '' },
-    { key: 'subs', label: 'Visitors', width: 80, render: (r) => formatNumber(r.subscribers), sort: (r) => r.subscribers ?? -1 },
+    {
+      key: 'over18',
+      label: 'over18',
+      width: 70,
+      render: (r) => (r.over18 === undefined ? '' : String(r.over18)),
+      sort: (r) => String(r.over18 ?? ''),
+    },
+    {
+      key: 'lang',
+      label: 'Detected',
+      width: 80,
+      render: (r) => r.detectedLanguage ?? '',
+      sort: (r) => r.detectedLanguage ?? '',
+    },
+    {
+      key: 'subs',
+      label: 'Visitors',
+      width: 80,
+      render: (r) => formatNumber(r.subscribers),
+      sort: (r) => r.subscribers ?? -1,
+    },
     { key: 'titles', label: 'Titles', width: 60, render: (r) => r.sampleCount, sort: (r) => r.sampleCount },
     { key: 'seen', label: 'Seen', width: 60, render: (r) => r.seenCount, sort: (r) => r.seenCount },
-    { key: 'last', label: 'Last seen', width: 90, render: (r) => formatAgo(r.lastSeenAt), sort: (r) => r.lastSeenAt },
+    {
+      key: 'last',
+      label: 'Last seen',
+      width: 90,
+      render: (r) => formatAgo(r.lastSeenAt),
+      sort: (r) => r.lastSeenAt,
+    },
     {
       key: 'state',
       label: 'State',
@@ -133,7 +171,7 @@ export function Table(props: {
             <div
               key={c.key}
               class="sortable"
-              onClick={() => setSort((s) => ({ key: c.key, dir: s.key === c.key ? ((-s.dir) as 1 | -1) : 1 }))}
+              onClick={() => setSort((s) => ({ key: c.key, dir: s.key === c.key ? (-s.dir as 1 | -1) : 1 }))}
             >
               {c.label}
               {sort.key === c.key ? (sort.dir === 1 ? ' ▲' : ' ▼') : ''}
@@ -145,7 +183,12 @@ export function Table(props: {
             <div
               key={r.name}
               class={`trow ${props.openName === r.name ? 'open' : ''}`}
-              style={{ gridTemplateColumns: template, position: 'absolute', top: `${(start + i) * ROW_HEIGHT}px`, height: `${ROW_HEIGHT}px` }}
+              style={{
+                gridTemplateColumns: template,
+                position: 'absolute',
+                top: `${(start + i) * ROW_HEIGHT}px`,
+                height: `${ROW_HEIGHT}px`,
+              }}
               onClick={() => props.onOpen(r.name)}
             >
               <div onClick={(e) => e.stopPropagation()}>

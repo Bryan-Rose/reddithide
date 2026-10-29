@@ -239,13 +239,7 @@ export interface BlockSet {
 }
 
 export type RuntimeErrorKind =
-  | 'auth'
-  | 'reddit_permission'
-  | 'reddit_blocked'
-  | 'rate_limit'
-  | 'provider_hint'
-  | 'no_profile'
-  | 'other';
+  'auth' | 'reddit_permission' | 'reddit_blocked' | 'rate_limit' | 'provider_hint' | 'no_profile' | 'other';
 
 export interface RuntimeError {
   kind: RuntimeErrorKind;

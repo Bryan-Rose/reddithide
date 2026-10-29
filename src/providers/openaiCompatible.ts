@@ -73,9 +73,14 @@ export const openAiCompatibleConnector: Connector = {
   },
 
   async listModels(profile): Promise<string[]> {
-    const res = await providerFetch(profile, joinUrl(profile.baseUrl, '/models'), { headers: headers(profile) });
+    const res = await providerFetch(profile, joinUrl(profile.baseUrl, '/models'), {
+      headers: headers(profile),
+    });
     const data = (await res.json()) as { data?: { id: string }[]; models?: { name?: string; id?: string }[] };
     const list = data.data ?? data.models ?? [];
-    return list.map((m) => ('id' in m && m.id ? m.id : ((m as { name?: string }).name ?? ''))).filter(Boolean).sort();
+    return list
+      .map((m) => ('id' in m && m.id ? m.id : ((m as { name?: string }).name ?? '')))
+      .filter(Boolean)
+      .sort();
   },
 };

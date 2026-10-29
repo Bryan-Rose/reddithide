@@ -8,9 +8,7 @@
       "id": "reddithide@bryanrose.net",
       "strict_min_version": "128.0",
       "data_collection_permissions": {
-        "required": [
-          "none"
-        ]
+        "required": ["none"]
       }
     }
   },
@@ -18,32 +16,16 @@
     "48": "icon.svg",
     "96": "icon.svg"
   },
-  "permissions": [
-    "storage",
-    "unlimitedStorage",
-    "alarms"
-  ],
-  "host_permissions": [
-    "*://*.reddit.com/*"
-  ],
-  "optional_host_permissions": [
-    "*://*/*",
-    "http://localhost/*",
-    "http://127.0.0.1/*"
-  ],
+  "permissions": ["storage", "unlimitedStorage", "alarms"],
+  "host_permissions": ["*://*.reddit.com/*"],
+  "optional_host_permissions": ["*://*/*", "http://localhost/*", "http://127.0.0.1/*"],
   "background": {
-    "scripts": [
-      "background.js"
-    ]
+    "scripts": ["background.js"]
   },
   "content_scripts": [
     {
-      "matches": [
-        "*://www.reddit.com/*"
-      ],
-      "js": [
-        "content.js"
-      ],
+      "matches": ["*://www.reddit.com/*"],
+      "js": ["content.js"],
       "run_at": "document_start"
     }
   ],

@@ -57,7 +57,10 @@ const MAX_TITLES = 25;
 
 /** Strips our delimiter tags from untrusted text so it can't close the data block early. */
 function clean(s: string): string {
-  return s.replace(/<\/?subreddit_data>/gi, '').replace(/\s+/g, ' ').trim();
+  return s
+    .replace(/<\/?subreddit_data>/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 export function buildUserMessage(rec: SubredditRecord): string {

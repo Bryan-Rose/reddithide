@@ -37,7 +37,8 @@ browser.runtime.onMessage.addListener((raw: unknown, sender: Runtime.MessageSend
   const msg = raw as ContentToBackground | RpcRequest;
   switch (msg?.type) {
     case 'rpc':
-      if (!isTrustedSender(sender)) return Promise.resolve({ ok: false, error: 'RPC is only available to extension pages' });
+      if (!isTrustedSender(sender))
+        return Promise.resolve({ ok: false, error: 'RPC is only available to extension pages' });
       return handleRpc(msg.method, msg.params).then(
         (result) => ({ ok: true, result }),
         (e: unknown) => ({ ok: false, error: errorMessage(e) }),
@@ -51,7 +52,9 @@ browser.runtime.onMessage.addListener((raw: unknown, sender: Runtime.MessageSend
     case 'pageStats': {
       const tabId = sender.tab?.id;
       if (tabId === undefined) return undefined;
-      return browser.action.setBadgeText({ tabId, text: msg.hidden ? String(msg.hidden) : '' }).catch(() => {});
+      return browser.action
+        .setBadgeText({ tabId, text: msg.hidden ? String(msg.hidden) : '' })
+        .catch(() => {});
     }
     default:
       return undefined;
@@ -82,7 +85,11 @@ async function checkRedditPermission(): Promise<void> {
   const granted = await browser.permissions.contains({ origins: REDDIT_ORIGINS });
   await setRedditPermission(granted);
   if (granted) await clearErrors(['reddit_permission']);
-  else await reportError('reddit_permission', 'RedditHide needs access to reddit.com. Click "Grant access" in the popup.');
+  else
+    await reportError(
+      'reddit_permission',
+      'RedditHide needs access to reddit.com. Click "Grant access" in the popup.',
+    );
 }
 
 browser.permissions.onAdded.addListener(() => void checkRedditPermission());

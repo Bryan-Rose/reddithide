@@ -4,7 +4,15 @@ import { subredditUrl } from '../../shared/names';
 import type { AttributeDef, AttributeValue, Settings, SubredditRecord } from '../../shared/types';
 import { formatAgo, formatNumber, formatValue } from '../common/format';
 
-export function Drawer({ name, settings, onClose }: { name: string; settings: Settings; onClose: () => void }) {
+export function Drawer({
+  name,
+  settings,
+  onClose,
+}: {
+  name: string;
+  settings: Settings;
+  onClose: () => void;
+}) {
   const [rec, setRec] = useState<SubredditRecord | null>(null);
   const [profileId, setProfileId] = useState(settings.defaultProfileId ?? '');
   const [note, setNote] = useState('');
@@ -33,7 +41,8 @@ export function Drawer({ name, settings, onClose }: { name: string; settings: Se
         <button onClick={onClose}>Close</button>
       </div>
       <div class="muted small">
-        {rec.pipelineState} · seen {rec.seenCount}× · first {formatAgo(rec.firstSeenAt)} · last {formatAgo(rec.lastSeenAt)}
+        {rec.pipelineState} · seen {rec.seenCount}× · first {formatAgo(rec.firstSeenAt)} · last{' '}
+        {formatAgo(rec.lastSeenAt)}
       </div>
       {rec.lastError && (
         <div class="banner error small">
@@ -53,15 +62,23 @@ export function Drawer({ name, settings, onClose }: { name: string; settings: Se
         <button
           disabled={!settings.profiles.length}
           onClick={() =>
-            void rpc('reclassify', { names: [name], profileId: profileId || undefined }).then(() => setNote('Queued.'))
+            void rpc('reclassify', { names: [name], profileId: profileId || undefined }).then(() =>
+              setNote('Queued.'),
+            )
           }
         >
           Reclassify
         </button>
-        <button class={blocked ? 'primary' : ''} onClick={() => void rpc('setManual', { names: [name], list: blocked ? 'none' : 'block' })}>
+        <button
+          class={blocked ? 'primary' : ''}
+          onClick={() => void rpc('setManual', { names: [name], list: blocked ? 'none' : 'block' })}
+        >
           {blocked ? 'Blocked ✓' : 'Always block'}
         </button>
-        <button class={allowed ? 'primary' : ''} onClick={() => void rpc('setManual', { names: [name], list: allowed ? 'none' : 'allow' })}>
+        <button
+          class={allowed ? 'primary' : ''}
+          onClick={() => void rpc('setManual', { names: [name], list: allowed ? 'none' : 'allow' })}
+        >
           {allowed ? 'Allowed ✓' : 'Always allow'}
         </button>
       </div>
@@ -147,7 +164,12 @@ function KV({ k, v }: { k: string; v: string | undefined }) {
   );
 }
 
-function AttributeRow(props: { attr: AttributeDef; rec: SubredditRecord; settings: Settings; onChanged: () => void }) {
+function AttributeRow(props: {
+  attr: AttributeDef;
+  rec: SubredditRecord;
+  settings: Settings;
+  onChanged: () => void;
+}) {
   const { attr, rec, settings } = props;
   const v = rec.classification?.values[attr.id];
   const override = rec.overrides?.[attr.id];
@@ -169,7 +191,10 @@ function AttributeRow(props: { attr: AttributeDef; rec: SubredditRecord; setting
     );
   } else if (attr.type === 'enum' && options.length <= 60) {
     editor = (
-      <select value={override === undefined ? '' : String(override)} onChange={(e) => setOverride(e.currentTarget.value || null)}>
+      <select
+        value={override === undefined ? '' : String(override)}
+        onChange={(e) => setOverride(e.currentTarget.value || null)}
+      >
         <option value="">no override</option>
         {options.map((o) => (
           <option value={o} key={o}>
@@ -187,7 +212,10 @@ function AttributeRow(props: { attr: AttributeDef; rec: SubredditRecord; setting
         onChange={(e) => {
           const t = e.currentTarget.value.trim();
           if (!t) return setOverride(null);
-          const list = t.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+          const list = t
+            .split(',')
+            .map((s) => s.trim().toLowerCase())
+            .filter(Boolean);
           setOverride(attr.type === 'multi_enum' ? list : list[0]!);
         }}
       />
@@ -200,7 +228,8 @@ function AttributeRow(props: { attr: AttributeDef; rec: SubredditRecord; setting
       <td>
         {v ? (
           <>
-            <strong>{formatValue(v.value)}</strong> <span class="muted small">({v.confidence.toFixed(2)})</span>
+            <strong>{formatValue(v.value)}</strong>{' '}
+            <span class="muted small">({v.confidence.toFixed(2)})</span>
             {v.rawValue !== undefined && v.rawValue !== v.value && (
               <span class="muted small"> model said {formatValue(v.rawValue)}</span>
             )}

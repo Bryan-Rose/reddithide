@@ -14,7 +14,12 @@ addEventListener('message', (e: MessageEvent) => {
       case 'storageSet':
         return browser.storage.local.set(data.params as Record<string, unknown>);
       default:
-        return browser.runtime.sendMessage({ type: 'rpc', method: data.rhDebug, params: data.params, debugBridge: true });
+        return browser.runtime.sendMessage({
+          type: 'rpc',
+          method: data.rhDebug,
+          params: data.params,
+          debugBridge: true,
+        });
     }
   };
   run().then(reply, (err: unknown) => reply({ bridgeError: String(err) }));

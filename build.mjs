@@ -23,7 +23,11 @@ async function copyStatic() {
   const manifest = JSON.parse(await readFile('manifest.json', 'utf8'));
   if (debugBridge) {
     manifest.name += ' (debug bridge)';
-    manifest.content_scripts.push({ matches: ['*://www.reddit.com/*'], js: ['debug-bridge.js'], run_at: 'document_start' });
+    manifest.content_scripts.push({
+      matches: ['*://www.reddit.com/*'],
+      js: ['debug-bridge.js'],
+      run_at: 'document_start',
+    });
   }
   await writeFile(`${outdir}/manifest.json`, JSON.stringify(manifest, null, 2));
   await cp('static', outdir, { recursive: true });

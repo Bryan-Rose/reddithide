@@ -28,7 +28,9 @@ function Popup() {
   const [message, setMessage] = useState('');
 
   usePoll(() => {
-    void rpc('getStatus').then(setStatus).catch((e) => setMessage(String(e)));
+    void rpc('getStatus')
+      .then(setStatus)
+      .catch((e) => setMessage(String(e)));
     void activeTabStats().then(setStats);
   }, 2000);
 
@@ -77,7 +79,10 @@ function Popup() {
       {status.runtime.errors
         .filter((e) => e.kind !== 'reddit_permission')
         .map((e) => (
-          <div class={`banner ${e.kind === 'rate_limit' || e.kind === 'provider_hint' ? 'warn' : 'error'}`} key={e.at}>
+          <div
+            class={`banner ${e.kind === 'rate_limit' || e.kind === 'provider_hint' ? 'warn' : 'error'}`}
+            key={e.at}
+          >
             {e.message}
           </div>
         ))}
@@ -132,13 +137,17 @@ function Popup() {
         {status.paused && <div class="muted">Paused.</div>}
       </div>
 
-      {pageSub && <SubredditPanel name={pageSub} record={record} settings={settings} onMessage={setMessage} />}
+      {pageSub && (
+        <SubredditPanel name={pageSub} record={record} settings={settings} onMessage={setMessage} />
+      )}
 
       {message && <div class="banner info small">{message}</div>}
 
       <div class="row">
         <button onClick={() => openPage('review.html')}>Review subreddits</button>
-        <button onClick={() => void browser.runtime.openOptionsPage().then(() => window.close())}>Options</button>
+        <button onClick={() => void browser.runtime.openOptionsPage().then(() => window.close())}>
+          Options
+        </button>
       </div>
     </div>
   );
@@ -168,7 +177,11 @@ function SubredditPanel(props: {
             const v = effective(a.id, record.classification?.values, record.overrides);
             if (!v) return null;
             return (
-              <span class={`chip ${v.value === true ? 'on' : ''}`} key={a.id} title={`confidence ${v.confidence.toFixed(2)}`}>
+              <span
+                class={`chip ${v.value === true ? 'on' : ''}`}
+                key={a.id}
+                title={`confidence ${v.confidence.toFixed(2)}`}
+              >
                 {a.label}: {formatValue(v.value)}
                 {v.overridden ? ' ✎' : ''}
               </span>
@@ -179,15 +192,23 @@ function SubredditPanel(props: {
       <div class="row">
         <button
           onClick={() =>
-            void rpc('reclassify', { names: [name] }).then(() => props.onMessage(`Queued r/${name} for classification.`))
+            void rpc('reclassify', { names: [name] }).then(() =>
+              props.onMessage(`Queued r/${name} for classification.`),
+            )
           }
         >
           Reclassify
         </button>
-        <button class={blocked ? 'primary' : ''} onClick={() => void rpc('setManual', { names: [name], list: blocked ? 'none' : 'block' })}>
+        <button
+          class={blocked ? 'primary' : ''}
+          onClick={() => void rpc('setManual', { names: [name], list: blocked ? 'none' : 'block' })}
+        >
           {blocked ? 'Blocked ✓' : 'Always block'}
         </button>
-        <button class={allowed ? 'primary' : ''} onClick={() => void rpc('setManual', { names: [name], list: allowed ? 'none' : 'allow' })}>
+        <button
+          class={allowed ? 'primary' : ''}
+          onClick={() => void rpc('setManual', { names: [name], list: allowed ? 'none' : 'allow' })}
+        >
           {allowed ? 'Allowed ✓' : 'Always allow'}
         </button>
       </div>

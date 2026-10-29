@@ -22,11 +22,21 @@ function Options() {
       <div class="tabs">
         {(['providers', 'attributes', 'behavior', 'data'] as Tab[]).map((t) => (
           <button class={tab === t ? 'active' : ''} onClick={() => setTab(t)} key={t}>
-            {{ providers: 'Providers', attributes: 'Attributes & topics', behavior: 'Behavior', data: 'Data' }[t]}
+            {
+              {
+                providers: 'Providers',
+                attributes: 'Attributes & topics',
+                behavior: 'Behavior',
+                data: 'Data',
+              }[t]
+            }
           </button>
         ))}
         <span class="spacer" />
-        <button class="link" onClick={() => void browser.tabs.create({ url: browser.runtime.getURL('review.html') })}>
+        <button
+          class="link"
+          onClick={() => void browser.tabs.create({ url: browser.runtime.getURL('review.html') })}
+        >
           Open review page →
         </button>
       </div>
@@ -69,7 +79,9 @@ function Providers({ settings, save }: { settings: Settings; save: Save }) {
 
   const upsert = async (p: ProviderProfile) => {
     const exists = settings.profiles.some((x) => x.id === p.id);
-    const profiles = exists ? settings.profiles.map((x) => (x.id === p.id ? p : x)) : [...settings.profiles, p];
+    const profiles = exists
+      ? settings.profiles.map((x) => (x.id === p.id ? p : x))
+      : [...settings.profiles, p];
     await save({ profiles, defaultProfileId: settings.defaultProfileId ?? p.id });
   };
   const remove = async (id: string) => {
@@ -84,8 +96,8 @@ function Providers({ settings, save }: { settings: Settings; save: Save }) {
   return (
     <div class="stack">
       <div class="banner warn small">
-        API keys are stored unencrypted in this browser profile's extension storage. Use keys with spending limits.
-        Only public subreddit data (names, descriptions, post titles) is sent to providers.
+        API keys are stored unencrypted in this browser profile's extension storage. Use keys with spending
+        limits. Only public subreddit data (names, descriptions, post titles) is sent to providers.
       </div>
       <div class="row">
         <select value={presetIdx} onChange={(e) => setPresetIdx(Number(e.currentTarget.value))}>
@@ -110,7 +122,8 @@ function Providers({ settings, save }: { settings: Settings; save: Save }) {
               <td>
                 <strong>{p.name}</strong>
                 <div class="muted small">
-                  {p.kind} · {p.model || '(no model)'} · {p.baseUrl} {p.apiKey ? `· key ${maskKey(p.apiKey)}` : ''}
+                  {p.kind} · {p.model || '(no model)'} · {p.baseUrl}{' '}
+                  {p.apiKey ? `· key ${maskKey(p.apiKey)}` : ''}
                 </div>
               </td>
               <td class="nowrap">
@@ -165,14 +178,17 @@ function ProfileEditor(props: {
   onDelete: () => void;
 }) {
   const [p, setP] = useState<ProviderProfile>(props.initial);
-  const [headersText, setHeadersText] = useState(p.extraHeaders ? JSON.stringify(p.extraHeaders, null, 2) : '');
+  const [headersText, setHeadersText] = useState(
+    p.extraHeaders ? JSON.stringify(p.extraHeaders, null, 2) : '',
+  );
   const [models, setModels] = useState<string[]>([]);
   const [busy, setBusy] = useState('');
   const [note, setNote] = useState('');
   const [test, setTest] = useState<TestResult | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const set = <K extends keyof ProviderProfile>(k: K, v: ProviderProfile[K]) => setP((old) => ({ ...old, [k]: v }));
+  const set = <K extends keyof ProviderProfile>(k: K, v: ProviderProfile[K]) =>
+    setP((old) => ({ ...old, [k]: v }));
 
   const build = (): ProviderProfile | null => {
     let extraHeaders: Record<string, string> | undefined;
@@ -188,7 +204,12 @@ function ProfileEditor(props: {
       setNote('Base URL must start with http:// or https://');
       return null;
     }
-    return { ...p, baseUrl: p.baseUrl.trim().replace(/\/+$/, ''), apiKey: p.apiKey?.trim() || undefined, extraHeaders };
+    return {
+      ...p,
+      baseUrl: p.baseUrl.trim().replace(/\/+$/, ''),
+      apiKey: p.apiKey?.trim() || undefined,
+      extraHeaders,
+    };
   };
 
   // Each handler starts the permission request before any await: it needs the click's user gesture.
@@ -197,7 +218,8 @@ function ProfileEditor(props: {
     if (!profile) return;
     const perm = requestOrigin(profile);
     void perm.then(async (granted) => {
-      if (!granted) setNote(`Permission for ${originPattern(profile.baseUrl)} was not granted; requests will fail.`);
+      if (!granted)
+        setNote(`Permission for ${originPattern(profile.baseUrl)} was not granted; requests will fail.`);
       await props.onSave(profile);
     });
   };
@@ -234,12 +256,19 @@ function ProfileEditor(props: {
         <label>Name</label>
         <input value={p.name} onInput={(e) => set('name', e.currentTarget.value)} />
         <label>Kind</label>
-        <select value={p.kind} onChange={(e) => set('kind', e.currentTarget.value as ProviderProfile['kind'])}>
+        <select
+          value={p.kind}
+          onChange={(e) => set('kind', e.currentTarget.value as ProviderProfile['kind'])}
+        >
           <option value="anthropic">Anthropic</option>
           <option value="openai-compatible">OpenAI-compatible</option>
         </select>
         <label>Base URL</label>
-        <input value={p.baseUrl} placeholder="https://…" onInput={(e) => set('baseUrl', e.currentTarget.value)} />
+        <input
+          value={p.baseUrl}
+          placeholder="https://…"
+          onInput={(e) => set('baseUrl', e.currentTarget.value)}
+        />
         <label>API key</label>
         <input
           type="password"
@@ -250,7 +279,12 @@ function ProfileEditor(props: {
         />
         <label>Model</label>
         <div class="row">
-          <input list="models" value={p.model} onInput={(e) => set('model', e.currentTarget.value)} style="flex:1" />
+          <input
+            list="models"
+            value={p.model}
+            onInput={(e) => set('model', e.currentTarget.value)}
+            style="flex:1"
+          />
           <datalist id="models">
             {models.map((m) => (
               <option value={m} key={m} />
@@ -263,26 +297,78 @@ function ProfileEditor(props: {
         <label>Structured output</label>
         <select
           value={p.structuredOutput}
-          onChange={(e) => set('structuredOutput', e.currentTarget.value as ProviderProfile['structuredOutput'])}
+          onChange={(e) =>
+            set('structuredOutput', e.currentTarget.value as ProviderProfile['structuredOutput'])
+          }
         >
           <option value="native">native (JSON schema)</option>
           <option value="json_object">json_object</option>
           <option value="prompt_only">prompt only</option>
         </select>
         <label>Temperature</label>
-        <input type="number" step="0.1" min="0" max="2" value={p.temperature} onInput={(e) => set('temperature', Number(e.currentTarget.value))} />
+        <input
+          type="number"
+          step="0.1"
+          min="0"
+          max="2"
+          value={p.temperature}
+          onInput={(e) => set('temperature', Number(e.currentTarget.value))}
+        />
         <label>Max concurrency</label>
-        <input type="number" min="1" max="16" value={p.maxConcurrency} onInput={(e) => set('maxConcurrency', Number(e.currentTarget.value))} />
+        <input
+          type="number"
+          min="1"
+          max="16"
+          value={p.maxConcurrency}
+          onInput={(e) => set('maxConcurrency', Number(e.currentTarget.value))}
+        />
         <label>Requests / minute</label>
-        <input type="number" min="1" value={p.requestsPerMinute} onInput={(e) => set('requestsPerMinute', Number(e.currentTarget.value))} />
+        <input
+          type="number"
+          min="1"
+          value={p.requestsPerMinute}
+          onInput={(e) => set('requestsPerMinute', Number(e.currentTarget.value))}
+        />
         <label>Timeout (ms)</label>
-        <input type="number" min="1000" step="1000" value={p.timeoutMs} onInput={(e) => set('timeoutMs', Number(e.currentTarget.value))} />
+        <input
+          type="number"
+          min="1000"
+          step="1000"
+          value={p.timeoutMs}
+          onInput={(e) => set('timeoutMs', Number(e.currentTarget.value))}
+        />
         <label>Extra headers (JSON)</label>
-        <textarea value={headersText} placeholder='{"HTTP-Referer": "…", "X-Title": "RedditHide"}' onInput={(e) => setHeadersText(e.currentTarget.value)} />
+        <textarea
+          value={headersText}
+          placeholder='{"HTTP-Referer": "…", "X-Title": "RedditHide"}'
+          onInput={(e) => setHeadersText(e.currentTarget.value)}
+        />
         <label>Price in / out ($ per M tokens)</label>
         <div class="row">
-          <input type="number" step="0.01" min="0" value={p.priceInputPerMTok ?? ''} onInput={(e) => set('priceInputPerMTok', e.currentTarget.value === '' ? undefined : Number(e.currentTarget.value))} />
-          <input type="number" step="0.01" min="0" value={p.priceOutputPerMTok ?? ''} onInput={(e) => set('priceOutputPerMTok', e.currentTarget.value === '' ? undefined : Number(e.currentTarget.value))} />
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={p.priceInputPerMTok ?? ''}
+            onInput={(e) =>
+              set(
+                'priceInputPerMTok',
+                e.currentTarget.value === '' ? undefined : Number(e.currentTarget.value),
+              )
+            }
+          />
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={p.priceOutputPerMTok ?? ''}
+            onInput={(e) =>
+              set(
+                'priceOutputPerMTok',
+                e.currentTarget.value === '' ? undefined : Number(e.currentTarget.value),
+              )
+            }
+          />
         </div>
       </div>
       {isLocalUrl(p.baseUrl) && (
@@ -385,14 +471,17 @@ function Attributes({ settings, save }: { settings: Settings; save: Save }) {
       if (!/^[a-z][a-z0-9_]*$/.test(a.id)) return setNote(`Attribute id "${a.id}" must be snake_case.`);
       if (ids.has(a.id)) return setNote(`Duplicate attribute id "${a.id}".`);
       ids.add(a.id);
-      if (a.source === 'llm' && !a.definition.trim()) return setNote(`Attribute "${a.id}" needs a definition.`);
+      if (a.source === 'llm' && !a.definition.trim())
+        return setNote(`Attribute "${a.id}" needs a definition.`);
       if (a.type !== 'boolean' && a.id !== 'topic' && !(a.options ?? []).length)
         return setNote(`Attribute "${a.id}" needs a list of options.`);
     }
     if (!topics.includes('other')) topics.push('other');
     await save({ attributes: attrs.map((a) => ({ ...a, label: a.label || a.id })), topics });
     setTopicsText(topics.join(', '));
-    setNote('Saved. Subreddits classified with the previous rubric are offered for re-classification on the review page.');
+    setNote(
+      'Saved. Subreddits classified with the previous rubric are offered for re-classification on the review page.',
+    );
   };
   const reset = () => {
     const d = defaultSettings();
@@ -421,7 +510,11 @@ function Attributes({ settings, save }: { settings: Settings; save: Save }) {
               onInput={(e) => update(i, { id: e.currentTarget.value })}
               style="width: 160px"
             />
-            <input placeholder="Label" value={a.label} onInput={(e) => update(i, { label: e.currentTarget.value })} />
+            <input
+              placeholder="Label"
+              value={a.label}
+              onInput={(e) => update(i, { label: e.currentTarget.value })}
+            />
             <select
               value={a.type}
               disabled={a.source === 'language_builtin' || a.id === 'topic'}
@@ -445,7 +538,11 @@ function Attributes({ settings, save }: { settings: Settings; save: Save }) {
               </label>
             )}
             <label class="small">
-              <input type="checkbox" checked={a.enabled} onChange={(e) => update(i, { enabled: e.currentTarget.checked })} />
+              <input
+                type="checkbox"
+                checked={a.enabled}
+                onChange={(e) => update(i, { enabled: e.currentTarget.checked })}
+              />
               enabled
             </label>
             <span class="spacer" />
@@ -463,8 +560,8 @@ function Attributes({ settings, save }: { settings: Settings; save: Save }) {
           </div>
           {a.source === 'language_builtin' ? (
             <div class="small muted">
-              Detected locally (Reddit's post-language tags, then browser language detection), with the model's guess as
-              a fallback. Values are ISO 639-1 codes, "mixed" or "und".
+              Detected locally (Reddit's post-language tags, then browser language detection), with the
+              model's guess as a fallback. Values are ISO 639-1 codes, "mixed" or "und".
             </div>
           ) : (
             <>
@@ -497,7 +594,11 @@ function Attributes({ settings, save }: { settings: Settings; save: Save }) {
         <span class="muted small">Ideas: political, rage_bait, spoilers_heavy</span>
       </div>
       <h3>Topics</h3>
-      <textarea value={topicsText} onInput={(e) => setTopicsText(e.currentTarget.value)} style="min-height: 100px" />
+      <textarea
+        value={topicsText}
+        onInput={(e) => setTopicsText(e.currentTarget.value)}
+        style="min-height: 100px"
+      />
       {note && <div class="banner info small">{note}</div>}
       <div class="row">
         <button class="primary" onClick={onSave}>
@@ -519,11 +620,18 @@ function BehaviorTab({ settings, save }: { settings: Settings; save: Save }) {
       <div class="grid-form">
         <label>Hiding</label>
         <label>
-          <input type="checkbox" checked={b.enabled} onChange={(e) => save({ behavior: { ...b, enabled: e.currentTarget.checked } })} />
+          <input
+            type="checkbox"
+            checked={b.enabled}
+            onChange={(e) => save({ behavior: { ...b, enabled: e.currentTarget.checked } })}
+          />
           enabled
         </label>
         <label>Hide mode</label>
-        <select value={b.hideMode} onChange={(e) => save({ behavior: { ...b, hideMode: e.currentTarget.value as typeof b.hideMode } })}>
+        <select
+          value={b.hideMode}
+          onChange={(e) => save({ behavior: { ...b, hideMode: e.currentTarget.value as typeof b.hideMode } })}
+        >
           <option value="collapse">collapse to a one-line placeholder</option>
           <option value="remove">remove completely</option>
         </select>
@@ -548,8 +656,9 @@ function BehaviorTab({ settings, save }: { settings: Settings; save: Save }) {
       </div>
       <h3>When to classify</h3>
       <p class="small muted">
-        Post titles are collected from the feeds you browse. A subreddit is classified once enough titles have been seen,
-        or after a waiting time. Visiting the subreddit (or clicking Reclassify) classifies it right away.
+        Post titles are collected from the feeds you browse. A subreddit is classified once enough titles have
+        been seen, or after a waiting time. Visiting the subreddit (or clicking Reclassify) classifies it
+        right away.
       </p>
       <div class="grid-form">
         <label>Titles needed</label>
@@ -573,12 +682,14 @@ function BehaviorTab({ settings, save }: { settings: Settings; save: Save }) {
           min="1000"
           step="500"
           value={settings.queue.redditMinIntervalMs}
-          onChange={(e) => save({ queue: { ...settings.queue, redditMinIntervalMs: Number(e.currentTarget.value) } })}
+          onChange={(e) =>
+            save({ queue: { ...settings.queue, redditMinIntervalMs: Number(e.currentTarget.value) } })
+          }
         />
       </div>
       <p class="small muted">
-        The request interval applies to direct reddit.com requests, which aren't made yet: Reddit currently blocks its
-        .json endpoints for extensions.
+        The request interval applies to direct reddit.com requests, which aren't made yet: Reddit currently
+        blocks its .json endpoints for extensions.
       </p>
     </div>
   );
@@ -616,7 +727,9 @@ function DataTab() {
             Clear subreddit data…
           </button>
         )}
-        <span class="muted small">Recorded subreddits, classifications and usage. Settings and providers are kept.</span>
+        <span class="muted small">
+          Recorded subreddits, classifications and usage. Settings and providers are kept.
+        </span>
       </div>
       <div class="row">
         {confirm === 'all' ? (

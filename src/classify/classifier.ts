@@ -1,7 +1,12 @@
 // One classification of one subreddit with one profile (SPEC §6.6, §7). No storage here;
 // the pipeline decides what to persist.
 import { getConnector } from '../providers';
-import { ProviderError, type ClassifyRequest, type ClassifyResponse, type Connector } from '../providers/types';
+import {
+  ProviderError,
+  type ClassifyRequest,
+  type ClassifyResponse,
+  type Connector,
+} from '../providers/types';
 import type { AttributeDef, ClassificationResult, ProviderProfile, SubredditRecord } from '../shared/types';
 import { sleep } from '../shared/util';
 import { finalizeValues, languageIsSettled, normalizeClassification } from './parse';
@@ -35,7 +40,8 @@ export function buildRequest(
   ctx: ClassifyContext,
 ): { req: ClassifyRequest; includeLanguageGuess: boolean } {
   const includeLanguageGuess =
-    ctx.attributes.some((a) => a.enabled && a.source === 'language_builtin') && !languageIsSettled(rec.detectedLanguage);
+    ctx.attributes.some((a) => a.enabled && a.source === 'language_builtin') &&
+    !languageIsSettled(rec.detectedLanguage);
   const schema = buildJsonSchema(ctx.attributes, ctx.topics, includeLanguageGuess);
   const schemaInPrompt = profile.structuredOutput === 'native' ? undefined : schema;
   return {
@@ -98,7 +104,8 @@ export async function classifyRecord(
     } else {
       const normalized = normalizeClassification(parsed.data, ctx.attributes, ctx.topics);
       if (!normalized.problems.length) {
-        if (normalized.mappings.length) console.info('[RedditHide] mapped values for', rec.name, normalized.mappings);
+        if (normalized.mappings.length)
+          console.info('[RedditHide] mapped values for', rec.name, normalized.mappings);
         return {
           kind: 'ok',
           rawText: res.rawText,
