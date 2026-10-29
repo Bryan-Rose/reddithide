@@ -3,7 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/shared/browser', () => ({
   default: {
-    storage: { local: { get: vi.fn(async () => ({})), set: vi.fn(), remove: vi.fn() }, onChanged: { addListener: vi.fn() } },
+    storage: {
+      local: { get: vi.fn(async () => ({})), set: vi.fn(), remove: vi.fn() },
+      onChanged: { addListener: vi.fn() },
+    },
     i18n: { detectLanguage: vi.fn() },
     action: { setBadgeText: vi.fn(), setBadgeBackgroundColor: vi.fn() },
   },
@@ -24,9 +27,22 @@ beforeEach(async () => {
 
 describe('ingestSeen', () => {
   it('creates records and counts sightings once per page view', async () => {
-    await ingestSeen({ type: 'seen', url: '', names: [{ name: 'Cats', displayName: 'Cats', sighting: true }] }, 1000);
-    await ingestSeen({ type: 'seen', url: '', names: [{ name: 'cats', displayName: 'Cats', sighting: false, posts: [{ id: 't3_1', title: 'A' }] }] }, 2000);
-    await ingestSeen({ type: 'seen', url: '', names: [{ name: 'cats', displayName: 'Cats', sighting: true }] }, 3000);
+    await ingestSeen(
+      { type: 'seen', url: '', names: [{ name: 'Cats', displayName: 'Cats', sighting: true }] },
+      1000,
+    );
+    await ingestSeen(
+      {
+        type: 'seen',
+        url: '',
+        names: [{ name: 'cats', displayName: 'Cats', sighting: false, posts: [{ id: 't3_1', title: 'A' }] }],
+      },
+      2000,
+    );
+    await ingestSeen(
+      { type: 'seen', url: '', names: [{ name: 'cats', displayName: 'Cats', sighting: true }] },
+      3000,
+    );
     const r = (await getRecord('cats'))!;
     expect(r.seenCount).toBe(2);
     expect(r.firstSeenAt).toBe(1000);
@@ -37,8 +53,16 @@ describe('ingestSeen', () => {
 
   it('dedupes titles by post id, newest first, capped at 25', async () => {
     const posts = Array.from({ length: 30 }, (_, i) => ({ id: `t3_${i}`, title: `T${i}`, lang: 'en' }));
-    await ingestSeen({ type: 'seen', url: '', names: [{ name: 'x1', displayName: 'x1', sighting: true, posts: posts.slice(0, 10) }] });
-    await ingestSeen({ type: 'seen', url: '', names: [{ name: 'x1', displayName: 'x1', sighting: false, posts }] });
+    await ingestSeen({
+      type: 'seen',
+      url: '',
+      names: [{ name: 'x1', displayName: 'x1', sighting: true, posts: posts.slice(0, 10) }],
+    });
+    await ingestSeen({
+      type: 'seen',
+      url: '',
+      names: [{ name: 'x1', displayName: 'x1', sighting: false, posts }],
+    });
     const r = (await getRecord('x1'))!;
     expect(r.samples!.titles).toHaveLength(25);
     expect(r.samples!.titles[0]).toBe('T10');
@@ -58,14 +82,23 @@ describe('ingestSeen', () => {
   });
 
   it('records the nsfw flag from search results', async () => {
-    await ingestSeen({ type: 'seen', url: '', names: [{ name: 'spicy', displayName: 'spicy', sighting: true, over18: true }] });
+    await ingestSeen({
+      type: 'seen',
+      url: '',
+      names: [{ name: 'spicy', displayName: 'spicy', sighting: true, over18: true }],
+    });
     expect((await getRecord('spicy'))!.meta).toMatchObject({ over18: true, source: 'dom' });
   });
 });
 
 describe('ingestMeta', () => {
   it('merges subreddit header metadata', async () => {
-    await ingestMeta({ type: 'subredditMeta', name: 'Python', displayName: 'Python', meta: { publicDescription: 'Snakes? No.', weeklyActiveUsers: 5 } });
+    await ingestMeta({
+      type: 'subredditMeta',
+      name: 'Python',
+      displayName: 'Python',
+      meta: { publicDescription: 'Snakes? No.', weeklyActiveUsers: 5 },
+    });
     const r = (await getRecord('python'))!;
     expect(r.meta).toMatchObject({ publicDescription: 'Snakes? No.', weeklyActiveUsers: 5 });
     expect(r.seenCount).toBe(1);
@@ -77,7 +110,9 @@ describe('samplesReady', () => {
   const base = { firstSeenAt: 0, samples: { titles: ['a'] } } as unknown as SubredditRecord;
   it('waits for enough titles', () => {
     expect(samplesReady(base, s, 1000)).toBe(false);
-    expect(samplesReady({ ...base, samples: { titles: ['a', 'b', 'c'] } } as SubredditRecord, s, 1000)).toBe(true);
+    expect(samplesReady({ ...base, samples: { titles: ['a', 'b', 'c'] } } as SubredditRecord, s, 1000)).toBe(
+      true,
+    );
   });
   it('or for the wait time with at least one title', () => {
     expect(samplesReady(base, s, 7 * 3600_000)).toBe(true);
@@ -173,7 +208,13 @@ describe('Limiter', () => {
     const starts: number[] = [];
     const t0 = Date.now();
     await Promise.all(
-      [1, 2, 3].map(() => limiter.run('q', { maxConcurrency: 5, requestsPerMinute: 1200 }, async () => void starts.push(Date.now() - t0))),
+      [1, 2, 3].map(() =>
+        limiter.run(
+          'q',
+          { maxConcurrency: 5, requestsPerMinute: 1200 },
+          async () => void starts.push(Date.now() - t0),
+        ),
+      ),
     );
     starts.sort((a, b) => a - b);
     expect(starts[2]! - starts[0]!).toBeGreaterThanOrEqual(90); // 50 ms spacing

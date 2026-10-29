@@ -11,7 +11,10 @@ export function normalizeSubreddit(raw: string | null | undefined): string | nul
 
 /** Strips "r/" from a display name but keeps its case. */
 export function displayNameOf(raw: string): string {
-  return raw.trim().replace(/^\/?r\//i, '').replace(/\/.*$/, '');
+  return raw
+    .trim()
+    .replace(/^\/?r\//i, '')
+    .replace(/\/.*$/, '');
 }
 
 const NON_SUBREDDIT_PAGES = new Set(['popular', 'all', 'mod', 'friends']);

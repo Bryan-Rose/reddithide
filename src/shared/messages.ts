@@ -80,7 +80,10 @@ export interface TestResult {
 }
 
 export interface RpcMethods {
-  getStatus: { params: void; result: { counts: QueueCounts; runtime: RuntimeStatus; rubricVersion: string; paused: boolean } };
+  getStatus: {
+    params: void;
+    result: { counts: QueueCounts; runtime: RuntimeStatus; rubricVersion: string; paused: boolean };
+  };
   listSubreddits: { params: void; result: SubredditRow[] };
   getSubreddit: { params: { name: string }; result: SubredditRecord | null };
   reclassify: { params: { names: string[] | 'outdated'; profileId?: string }; result: { queued: number } };
@@ -90,7 +93,10 @@ export interface RpcMethods {
   setPaused: { params: { paused: boolean }; result: void };
   testProfile: { params: { profile: ProviderProfile }; result: TestResult };
   listModels: { params: { profile: ProviderProfile }; result: { models: string[]; error?: string } };
-  previewRule: { params: { rule: RuleGroup }; result: { count: number; names: string[]; reasons: Record<string, string> } };
+  previewRule: {
+    params: { rule: RuleGroup };
+    result: { count: number; names: string[]; reasons: Record<string, string> };
+  };
   usageSummary: { params: void; result: UsageRow[] };
   dismissErrors: { params: void; result: void };
   checkRedditPermission: { params: void; result: { granted: boolean } };
@@ -107,8 +113,7 @@ export interface RpcRequest<M extends RpcMethod = RpcMethod> {
 }
 
 export type RpcResponse<M extends RpcMethod> =
-  | { ok: true; result: RpcMethods[M]['result'] }
-  | { ok: false; error: string };
+  { ok: true; result: RpcMethods[M]['result'] } | { ok: false; error: string };
 
 export async function rpc<M extends RpcMethod>(
   method: M,

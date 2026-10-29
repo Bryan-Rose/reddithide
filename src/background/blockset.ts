@@ -22,7 +22,8 @@ export function buildBlockSet(
   settings: Awaited<ReturnType<typeof getSettings>>,
   now = Date.now(),
 ): BlockSet {
-  const list = settings.filterLists.find((f) => f.id === settings.activeFilterListId) ?? settings.filterLists[0]!;
+  const list =
+    settings.filterLists.find((f) => f.id === settings.activeFilterListId) ?? settings.filterLists[0]!;
   const { names, reasons } = computeBlockSet(records, list.rule, settings.manualBlock, settings.manualAllow);
   const bs: BlockSet = { type: 'blockSet', names, reasons, behavior: settings.behavior, updatedAt: now };
   if (settings.behavior.hideUnclassified) {

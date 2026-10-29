@@ -10,14 +10,23 @@ interface Preview {
   reasons: Record<string, string>;
 }
 
-export function FilterLists({ settings, save }: { settings: Settings; save: (p: Partial<Settings>) => Promise<void> }) {
+export function FilterLists({
+  settings,
+  save,
+}: {
+  settings: Settings;
+  save: (p: Partial<Settings>) => Promise<void>;
+}) {
   const [selectedId, setSelectedId] = useState(settings.activeFilterListId);
   const selected = settings.filterLists.find((f) => f.id === selectedId) ?? settings.filterLists[0]!;
   const [draft, setDraft] = useState<RuleGroup>(selected.rule);
   const [name, setName] = useState(selected.name);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const fields = useMemo(() => fieldDefs(settings.attributes, settings.topics), [settings.attributes, settings.topics]);
+  const fields = useMemo(
+    () => fieldDefs(settings.attributes, settings.topics),
+    [settings.attributes, settings.topics],
+  );
 
   useEffect(() => {
     setDraft(selected.rule);
@@ -33,9 +42,17 @@ export function FilterLists({ settings, save }: { settings: Settings; save: (p: 
 
   const dirty = JSON.stringify(draft) !== JSON.stringify(selected.rule) || name !== selected.name;
   const saveList = () =>
-    save({ filterLists: settings.filterLists.map((f) => (f.id === selected.id ? { ...f, name: name.trim() || f.name, rule: draft } : f)) });
+    save({
+      filterLists: settings.filterLists.map((f) =>
+        f.id === selected.id ? { ...f, name: name.trim() || f.name, rule: draft } : f,
+      ),
+    });
   const create = async () => {
-    const list: FilterList = { id: uuid(), name: `List ${settings.filterLists.length + 1}`, rule: { op: 'any', children: [] } };
+    const list: FilterList = {
+      id: uuid(),
+      name: `List ${settings.filterLists.length + 1}`,
+      rule: { op: 'any', children: [] },
+    };
     await save({ filterLists: [...settings.filterLists, list] });
     setSelectedId(list.id);
   };
@@ -43,7 +60,8 @@ export function FilterLists({ settings, save }: { settings: Settings; save: (p: 
     const remaining = settings.filterLists.filter((f) => f.id !== selected.id);
     await save({
       filterLists: remaining,
-      activeFilterListId: settings.activeFilterListId === selected.id ? remaining[0]!.id : settings.activeFilterListId,
+      activeFilterListId:
+        settings.activeFilterListId === selected.id ? remaining[0]!.id : settings.activeFilterListId,
     });
     setSelectedId(remaining[0]!.id);
   };
@@ -131,10 +149,16 @@ function ManualLists({ settings }: { settings: Settings }) {
       <div class="muted">Always-allow wins over always-block and over the rule.</div>
       <div class="row">
         <input placeholder="subreddit names" value={input} onInput={(e) => setInput(e.currentTarget.value)} />
-        <button disabled={!names.length} onClick={() => void rpc('setManual', { names, list: 'block' }).then(() => setInput(''))}>
+        <button
+          disabled={!names.length}
+          onClick={() => void rpc('setManual', { names, list: 'block' }).then(() => setInput(''))}
+        >
           Always block
         </button>
-        <button disabled={!names.length} onClick={() => void rpc('setManual', { names, list: 'allow' }).then(() => setInput(''))}>
+        <button
+          disabled={!names.length}
+          onClick={() => void rpc('setManual', { names, list: 'allow' }).then(() => setInput(''))}
+        >
           Always allow
         </button>
       </div>
@@ -145,7 +169,11 @@ function ManualLists({ settings }: { settings: Settings }) {
           {settings[key].map((n) => (
             <span class="chip" key={n}>
               r/{n}{' '}
-              <button class="link" title="Remove" onClick={() => void rpc('setManual', { names: [n], list: 'none' })}>
+              <button
+                class="link"
+                title="Remove"
+                onClick={() => void rpc('setManual', { names: [n], list: 'none' })}
+              >
                 ✕
               </button>
             </span>

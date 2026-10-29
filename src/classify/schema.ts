@@ -34,7 +34,11 @@ function strictEntry(value: z.ZodType): z.ZodType {
  * JSON Schema in the conservative form strict modes accept: every property required,
  * additionalProperties false, no oneOf, enums as plain string enums, no numeric/array bounds.
  */
-export function buildJsonSchema(attrs: AttributeDef[], topics: string[], includeLanguageGuess: boolean): object {
+export function buildJsonSchema(
+  attrs: AttributeDef[],
+  topics: string[],
+  includeLanguageGuess: boolean,
+): object {
   const attributes: Record<string, z.ZodType> = {};
   for (const a of llmAttributes(attrs)) attributes[a.id] = strictEntry(strictValue(a, topics));
   const shape: Record<string, z.ZodType> = {
@@ -51,7 +55,9 @@ export function buildJsonSchema(attrs: AttributeDef[], topics: string[], include
 
 const lenientBool = z.union([
   z.boolean(),
-  z.enum(['true', 'false', 'True', 'False', 'yes', 'no']).transform((s) => ['true', 'yes'].includes(s.toLowerCase())),
+  z
+    .enum(['true', 'false', 'True', 'False', 'yes', 'no'])
+    .transform((s) => ['true', 'yes'].includes(s.toLowerCase())),
 ]);
 const lenientString = z.union([z.string(), z.number().transform(String)]);
 const lenientList = z.union([z.array(lenientString), lenientString.transform((s) => [s])]);

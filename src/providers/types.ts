@@ -24,7 +24,8 @@ export interface Connector {
   listModels(profile: ProviderProfile): Promise<string[]>;
 }
 
-export type ProviderErrorKind = 'auth' | 'rate_limit' | 'server' | 'network' | 'timeout' | 'bad_request' | 'other';
+export type ProviderErrorKind =
+  'auth' | 'rate_limit' | 'server' | 'network' | 'timeout' | 'bad_request' | 'other';
 
 export class ProviderError extends Error {
   constructor(
@@ -77,7 +78,8 @@ export async function providerFetch(
   try {
     res = await fetch(url, { ...init, signal: combined, credentials: 'omit' });
   } catch (e) {
-    if (timeout.aborted) throw new ProviderError('timeout', `Request timed out after ${profile.timeoutMs} ms`);
+    if (timeout.aborted)
+      throw new ProviderError('timeout', `Request timed out after ${profile.timeoutMs} ms`);
     if (signal?.aborted) throw new ProviderError('other', 'Request cancelled');
     const local = isLocalUrl(profile.baseUrl);
     throw new ProviderError(
@@ -114,7 +116,10 @@ export function parseJsonLenient(text: string): unknown {
   } catch {
     // fall through
   }
-  const unfenced = t.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
+  const unfenced = t
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/```\s*$/, '')
+    .trim();
   try {
     return JSON.parse(unfenced);
   } catch {

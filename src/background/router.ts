@@ -113,7 +113,12 @@ const handlers: Handlers = {
       getRubricVersion(),
       getSettings(),
     ]);
-    return { counts: countStates(records, rubricVersion), runtime, rubricVersion, paused: settings.queue.paused };
+    return {
+      counts: countStates(records, rubricVersion),
+      runtime,
+      rubricVersion,
+      paused: settings.queue.paused,
+    };
   },
 
   async listSubreddits() {
@@ -176,9 +181,15 @@ const handlers: Handlers = {
       });
       const latencyMs = Math.round(performance.now() - started);
       if (outcome.kind === 'ok') {
-        return { ok: true, latencyMs, rawText: outcome.rawText, parsed: { summary: outcome.result.summary, values: outcome.result.values } };
+        return {
+          ok: true,
+          latencyMs,
+          rawText: outcome.rawText,
+          parsed: { summary: outcome.result.summary, values: outcome.result.values },
+        };
       }
-      if (outcome.kind === 'refused') return { ok: false, refused: true, latencyMs, rawText: outcome.rawText, error: outcome.text };
+      if (outcome.kind === 'refused')
+        return { ok: false, refused: true, latencyMs, rawText: outcome.rawText, error: outcome.text };
       return { ok: false, latencyMs, rawText: outcome.rawText, error: `Invalid output: ${outcome.message}` };
     } catch (e) {
       return {

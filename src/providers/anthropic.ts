@@ -18,7 +18,8 @@ const API_VERSION = '2023-06-01';
 /** Models that reject non-default sampling parameters (temperature etc.). */
 const NO_SAMPLING = /claude-(fable|mythos)|claude-(opus|sonnet|haiku)-[5-9]|claude-opus-4-[78]/;
 /** Models that accept `output_config.effort`. These think by default, so they need more max_tokens. */
-const SUPPORTS_EFFORT = /claude-(fable|mythos)|claude-(opus|sonnet|haiku)-[5-9]|claude-opus-4-[5-8]|claude-sonnet-4-6/;
+const SUPPORTS_EFFORT =
+  /claude-(fable|mythos)|claude-(opus|sonnet|haiku)-[5-9]|claude-opus-4-[5-8]|claude-sonnet-4-6/;
 
 export function anthropicHeaders(profile: ProviderProfile): Record<string, string> {
   return {
@@ -52,7 +53,8 @@ export function buildAnthropicBody(profile: ProviderProfile, req: ClassifyReques
   };
   if (!NO_SAMPLING.test(model)) body.temperature = profile.temperature;
   const outputConfig: Record<string, unknown> = {};
-  if (profile.structuredOutput === 'native') outputConfig.format = { type: 'json_schema', schema: req.schema };
+  if (profile.structuredOutput === 'native')
+    outputConfig.format = { type: 'json_schema', schema: req.schema };
   if (effort) outputConfig.effort = 'low';
   if (Object.keys(outputConfig).length) body.output_config = outputConfig;
   return body;
@@ -63,7 +65,11 @@ export const anthropicConnector: Connector = {
     const res = await providerFetch(
       profile,
       joinUrl(profile.baseUrl, '/v1/messages'),
-      { method: 'POST', headers: anthropicHeaders(profile), body: JSON.stringify(buildAnthropicBody(profile, req)) },
+      {
+        method: 'POST',
+        headers: anthropicHeaders(profile),
+        body: JSON.stringify(buildAnthropicBody(profile, req)),
+      },
       signal,
     );
     const data = (await res.json()) as AnthropicMessageResponse;
@@ -73,7 +79,13 @@ export const anthropicConnector: Connector = {
       .join('');
     const usage = { inputTokens: data.usage?.input_tokens, outputTokens: data.usage?.output_tokens };
     if (data.stop_reason === 'refusal') {
-      return { json: undefined, rawText, usage, refused: true, refusalText: rawText || 'Refused (stop_reason: refusal)' };
+      return {
+        json: undefined,
+        rawText,
+        usage,
+        refused: true,
+        refusalText: rawText || 'Refused (stop_reason: refusal)',
+      };
     }
     return { json: parseJsonLenient(rawText), rawText, usage, refused: false };
   },

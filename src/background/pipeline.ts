@@ -2,11 +2,7 @@
 // records by pipelineState, so nothing is lost when the event page unloads.
 import { classifyRecord } from '../classify/classifier';
 import { ProviderError } from '../providers/types';
-import {
-  HISTORY_LIMIT,
-  MAX_ATTEMPTS,
-  RECLASSIFY_AFTER_MS,
-} from '../shared/constants';
+import { HISTORY_LIMIT, MAX_ATTEMPTS, RECLASSIFY_AFTER_MS } from '../shared/constants';
 import { saveSettings } from '../shared/settings';
 import type { PipelineState, ProviderProfile, Settings, SubredditRecord } from '../shared/types';
 import { errorMessage } from '../shared/util';
@@ -231,7 +227,11 @@ async function classifyJob(rec: SubredditRecord, profile: ProviderProfile): Prom
       const useFallback = !!fallback && fallback !== profile.id && !rec.pendingReclassify?.isFallback;
       await updateRecord(rec.name, (cur) => {
         if (!cur) return undefined;
-        const lastError = { at: now, stage: 'classify', message: `Refused by ${profile.name}: ${outcome.text.slice(0, 300)}` };
+        const lastError = {
+          at: now,
+          stage: 'classify',
+          message: `Refused by ${profile.name}: ${outcome.text.slice(0, 300)}`,
+        };
         if (useFallback) {
           return {
             ...cur,
@@ -241,19 +241,31 @@ async function classifyJob(rec: SubredditRecord, profile: ProviderProfile): Prom
             pendingReclassify: { requestedAt: now, profileId: fallback, isFallback: true },
           };
         }
-        return { ...cur, lastError, pipelineState: 'refused', pendingAt: undefined, pendingReclassify: undefined };
+        return {
+          ...cur,
+          lastError,
+          pipelineState: 'refused',
+          pendingAt: undefined,
+          pendingReclassify: undefined,
+        };
       });
       return;
     }
 
-    await updateRecord(rec.name, (cur) =>
-      cur && {
-        ...cur,
-        pipelineState: 'failed',
-        lastError: { at: now, stage: 'classify', message: `Invalid output from ${profile.name}: ${outcome.message}` },
-        pendingAt: undefined,
-        pendingReclassify: undefined,
-      },
+    await updateRecord(
+      rec.name,
+      (cur) =>
+        cur && {
+          ...cur,
+          pipelineState: 'failed',
+          lastError: {
+            at: now,
+            stage: 'classify',
+            message: `Invalid output from ${profile.name}: ${outcome.message}`,
+          },
+          pendingAt: undefined,
+          pendingReclassify: undefined,
+        },
     );
   } catch (e) {
     await handleProviderError(rec, profile, e, now);
@@ -270,7 +282,11 @@ async function handleProviderError(rec: SubredditRecord, profile: ProviderProfil
     case 'auth': {
       const settings = await getSettings();
       await saveSettings({ queue: { ...settings.queue, paused: true } });
-      await reportError('auth', `${profile.name}: authentication failed. Queue paused.\n${withHint}`, profile.id);
+      await reportError(
+        'auth',
+        `${profile.name}: authentication failed. Queue paused.\n${withHint}`,
+        profile.id,
+      );
       return;
     }
     case 'rate_limit': {
@@ -278,7 +294,11 @@ async function handleProviderError(rec: SubredditRecord, profile: ProviderProfil
       consecutive429.set(profile.id, n);
       const backoff = e.retryAfterMs ?? Math.min(30_000 * 2 ** (n - 1), 600_000);
       await setBackoff(profile.id, now + backoff);
-      await reportError('rate_limit', `${profile.name} is rate limiting requests; waiting ${Math.round(backoff / 1000)} s.`, profile.id);
+      await reportError(
+        'rate_limit',
+        `${profile.name} is rate limiting requests; waiting ${Math.round(backoff / 1000)} s.`,
+        profile.id,
+      );
       return;
     }
     case 'bad_request':
@@ -316,7 +336,9 @@ export async function queueReclassify(names: string[], profileId?: string): Prom
 /** Records classified with an older rubric (offered for re-run, never automatic). */
 export async function outdatedNames(): Promise<string[]> {
   const rubric = await getRubricVersion();
-  return (await getByState('classified')).filter((r) => r.classification?.rubricVersion !== rubric).map((r) => r.name);
+  return (await getByState('classified'))
+    .filter((r) => r.classification?.rubricVersion !== rubric)
+    .map((r) => r.name);
 }
 
 /** Daily: queue classifications older than 180 days. */

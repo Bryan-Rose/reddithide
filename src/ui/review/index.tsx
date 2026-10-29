@@ -46,8 +46,8 @@ function Review() {
       </header>
       {status && status.counts.outdatedRubric > 0 && (
         <div class="banner warn row">
-          {status.counts.outdatedRubric} subreddit{status.counts.outdatedRubric === 1 ? ' was' : 's were'} classified with an
-          older rubric. Re-run them?
+          {status.counts.outdatedRubric} subreddit{status.counts.outdatedRubric === 1 ? ' was' : 's were'}{' '}
+          classified with an older rubric. Re-run them?
           <button onClick={() => void rpc('reclassify', { names: 'outdated' })}>Re-run</button>
         </div>
       )}
@@ -104,7 +104,11 @@ function Subreddits({ settings }: { settings: Settings }) {
     <div class={`subreddits ${open ? 'with-drawer' : ''}`}>
       <div class="main stack">
         <div class="row toolbar">
-          <input placeholder="Search name or summary" value={query} onInput={(e) => setQuery(e.currentTarget.value)} />
+          <input
+            placeholder="Search name or summary"
+            value={query}
+            onInput={(e) => setQuery(e.currentTarget.value)}
+          />
           <select value={state} onChange={(e) => setState(e.currentTarget.value as PipelineState | '')}>
             <option value="">all states</option>
             {STATES.map((s) => (
@@ -124,7 +128,11 @@ function Subreddits({ settings }: { settings: Settings }) {
               ))}
           </select>
           {attrFilter && (
-            <input placeholder="value (e.g. true, en, gaming)" value={attrValue} onInput={(e) => setAttrValue(e.currentTarget.value)} />
+            <input
+              placeholder="value (e.g. true, en, gaming)"
+              value={attrValue}
+              onInput={(e) => setAttrValue(e.currentTarget.value)}
+            />
           )}
           <span class="muted small">
             {filtered.length} shown{selected.size ? ` · ${selected.size} selected` : ''}
@@ -142,14 +150,36 @@ function Subreddits({ settings }: { settings: Settings }) {
             <button
               disabled={!settings.profiles.length}
               onClick={() =>
-                bulk(() => rpc('reclassify', { names, profileId: bulkProfile || undefined }), `Queued ${names.length} for classification.`)
+                bulk(
+                  () => rpc('reclassify', { names, profileId: bulkProfile || undefined }),
+                  `Queued ${names.length} for classification.`,
+                )
               }
             >
               Reclassify
             </button>
-            <button onClick={() => bulk(() => rpc('setManual', { names, list: 'block' }), `Blocked ${names.length}.`)}>Always block</button>
-            <button onClick={() => bulk(() => rpc('setManual', { names, list: 'allow' }), `Allowed ${names.length}.`)}>Always allow</button>
-            <button onClick={() => bulk(() => rpc('setManual', { names, list: 'none' }), `Cleared manual lists for ${names.length}.`)}>
+            <button
+              onClick={() =>
+                bulk(() => rpc('setManual', { names, list: 'block' }), `Blocked ${names.length}.`)
+              }
+            >
+              Always block
+            </button>
+            <button
+              onClick={() =>
+                bulk(() => rpc('setManual', { names, list: 'allow' }), `Allowed ${names.length}.`)
+              }
+            >
+              Always allow
+            </button>
+            <button
+              onClick={() =>
+                bulk(
+                  () => rpc('setManual', { names, list: 'none' }),
+                  `Cleared manual lists for ${names.length}.`,
+                )
+              }
+            >
               Clear manual
             </button>
             {confirmDelete ? (
@@ -176,7 +206,14 @@ function Subreddits({ settings }: { settings: Settings }) {
           </div>
         )}
         {note && <div class="muted small">{note}</div>}
-        <Table rows={filtered} attrs={settings.attributes} selected={selected} onSelect={setSelected} onOpen={setOpen} openName={open} />
+        <Table
+          rows={filtered}
+          attrs={settings.attributes}
+          selected={selected}
+          onSelect={setSelected}
+          onOpen={setOpen}
+          openName={open}
+        />
       </div>
       {open && <Drawer key={open} name={open} settings={settings} onClose={() => setOpen(null)} />}
     </div>
@@ -186,7 +223,10 @@ function Subreddits({ settings }: { settings: Settings }) {
 function Usage({ settings }: { settings: Settings }) {
   const [usage, setUsage] = useState<UsageRow[]>([]);
   usePoll(() => void rpc('usageSummary').then(setUsage), 10000);
-  const byProfile = new Map<string, { calls: number; failed: number; inT: number; outT: number; model: string }>();
+  const byProfile = new Map<
+    string,
+    { calls: number; failed: number; inT: number; outT: number; model: string }
+  >();
   for (const u of usage) {
     const s = byProfile.get(u.profileId) ?? { calls: 0, failed: 0, inT: 0, outT: 0, model: u.model };
     s.calls++;

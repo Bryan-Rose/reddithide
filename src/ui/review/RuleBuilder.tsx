@@ -18,8 +18,18 @@ export function fieldDefs(attrs: AttributeDef[], topics: string[]): FieldDef[] {
       kind: a.type,
       options: a.id === 'topic' ? topics : (a.options ?? []),
     }));
-  fields.push({ id: PSEUDO_ATTRIBUTES[0].id, label: PSEUDO_ATTRIBUTES[0].label, kind: 'number', options: [] });
-  fields.push({ id: PSEUDO_ATTRIBUTES[1].id, label: PSEUDO_ATTRIBUTES[1].label, kind: 'boolean', options: [] });
+  fields.push({
+    id: PSEUDO_ATTRIBUTES[0].id,
+    label: PSEUDO_ATTRIBUTES[0].label,
+    kind: 'number',
+    options: [],
+  });
+  fields.push({
+    id: PSEUDO_ATTRIBUTES[1].id,
+    label: PSEUDO_ATTRIBUTES[1].label,
+    kind: 'boolean',
+    options: [],
+  });
   return fields;
 }
 
@@ -67,12 +77,16 @@ interface Props {
 export function RuleGroupEditor({ group, fields, onChange, onRemove, depth = 0 }: Props) {
   const setChild = (i: number, child: RuleGroup | Condition) =>
     onChange({ ...group, children: group.children.map((c, j) => (j === i ? child : c)) });
-  const removeChild = (i: number) => onChange({ ...group, children: group.children.filter((_, j) => j !== i) });
+  const removeChild = (i: number) =>
+    onChange({ ...group, children: group.children.filter((_, j) => j !== i) });
   return (
     <div class={`rule-group depth-${depth % 2}`}>
       <div class="row">
         <span>Hide when</span>
-        <select value={group.op} onChange={(e) => onChange({ ...group, op: e.currentTarget.value as RuleGroup['op'] })}>
+        <select
+          value={group.op}
+          onChange={(e) => onChange({ ...group, op: e.currentTarget.value as RuleGroup['op'] })}
+        >
           <option value="any">any</option>
           <option value="all">all</option>
         </select>
@@ -96,16 +110,30 @@ export function RuleGroupEditor({ group, fields, onChange, onRemove, depth = 0 }
               onRemove={() => removeChild(i)}
             />
           ) : (
-            <ConditionEditor key={i} cond={child} fields={fields} onChange={(c) => setChild(i, c)} onRemove={() => removeChild(i)} />
+            <ConditionEditor
+              key={i}
+              cond={child}
+              fields={fields}
+              onChange={(c) => setChild(i, c)}
+              onRemove={() => removeChild(i)}
+            />
           ),
         )}
-        {group.children.length === 0 && <div class="muted small">No conditions: this group matches nothing.</div>}
+        {group.children.length === 0 && (
+          <div class="muted small">No conditions: this group matches nothing.</div>
+        )}
       </div>
       <div class="row">
-        <button class="small" onClick={() => onChange({ ...group, children: [...group.children, defaultCondition(fields[0]!)] })}>
+        <button
+          class="small"
+          onClick={() => onChange({ ...group, children: [...group.children, defaultCondition(fields[0]!)] })}
+        >
           + condition
         </button>
-        <button class="small" onClick={() => onChange({ ...group, children: [...group.children, { op: 'all', children: [] }] })}>
+        <button
+          class="small"
+          onClick={() => onChange({ ...group, children: [...group.children, { op: 'all', children: [] }] })}
+        >
           + group
         </button>
       </div>
@@ -136,7 +164,9 @@ function ConditionEditor(props: {
           if (f) onChange({ ...defaultCondition(f), minConfidence: cond.minConfidence });
         }}
       >
-        {!fields.some((f) => f.id === cond.attribute) && <option value={cond.attribute}>{field.label}</option>}
+        {!fields.some((f) => f.id === cond.attribute) && (
+          <option value={cond.attribute}>{field.label}</option>
+        )}
         {fields.map((f) => (
           <option value={f.id} key={f.id}>
             {f.label}
@@ -179,10 +209,21 @@ function ConditionEditor(props: {
   );
 }
 
-function ValueEditor({ field, cond, onChange }: { field: FieldDef; cond: Condition; onChange: (c: Condition) => void }) {
+function ValueEditor({
+  field,
+  cond,
+  onChange,
+}: {
+  field: FieldDef;
+  cond: Condition;
+  onChange: (c: Condition) => void;
+}) {
   if (field.kind === 'boolean') {
     return (
-      <select value={String(cond.value)} onChange={(e) => onChange({ ...cond, value: e.currentTarget.value === 'true' })}>
+      <select
+        value={String(cond.value)}
+        onChange={(e) => onChange({ ...cond, value: e.currentTarget.value === 'true' })}
+      >
         <option value="true">true</option>
         <option value="false">false</option>
       </select>
@@ -190,7 +231,12 @@ function ValueEditor({ field, cond, onChange }: { field: FieldDef; cond: Conditi
   }
   if (field.kind === 'number') {
     return (
-      <input type="number" value={Number(cond.value)} style="width: 120px" onInput={(e) => onChange({ ...cond, value: Number(e.currentTarget.value) })} />
+      <input
+        type="number"
+        value={Number(cond.value)}
+        style="width: 120px"
+        onInput={(e) => onChange({ ...cond, value: Number(e.currentTarget.value) })}
+      />
     );
   }
   if (isListOp(cond.operator)) {
@@ -237,7 +283,10 @@ function ValueEditor({ field, cond, onChange }: { field: FieldDef; cond: Conditi
   }
   if (field.options.length > 0 && field.options.length <= 60) {
     return (
-      <select value={String(cond.value)} onChange={(e) => onChange({ ...cond, value: e.currentTarget.value })}>
+      <select
+        value={String(cond.value)}
+        onChange={(e) => onChange({ ...cond, value: e.currentTarget.value })}
+      >
         {field.options.map((o) => (
           <option value={o} key={o}>
             {o}
@@ -246,5 +295,11 @@ function ValueEditor({ field, cond, onChange }: { field: FieldDef; cond: Conditi
       </select>
     );
   }
-  return <input value={String(cond.value)} style="width: 100px" onChange={(e) => onChange({ ...cond, value: e.currentTarget.value.trim().toLowerCase() })} />;
+  return (
+    <input
+      value={String(cond.value)}
+      style="width: 100px"
+      onChange={(e) => onChange({ ...cond, value: e.currentTarget.value.trim().toLowerCase() })}
+    />
+  );
 }

@@ -1,11 +1,6 @@
 // Pure rule evaluator (SPEC §8). No browser APIs; thoroughly unit-tested.
 import { DEFAULT_MIN_CONFIDENCE } from '../shared/constants';
-import type {
-  AttributeValue,
-  Condition,
-  RuleGroup,
-  SubredditRecord,
-} from '../shared/types';
+import type { AttributeValue, Condition, RuleGroup, SubredditRecord } from '../shared/types';
 
 export interface ResolvedValue {
   value: AttributeValue | number;
@@ -43,7 +38,8 @@ function asList(v: AttributeValue | number): string[] {
 
 function scalarEq(a: AttributeValue | number, b: AttributeValue | number): boolean {
   if (typeof a === 'boolean' || typeof b === 'boolean') {
-    const toBool = (x: AttributeValue | number) => (typeof x === 'boolean' ? x : String(x).toLowerCase() === 'true');
+    const toBool = (x: AttributeValue | number) =>
+      typeof x === 'boolean' ? x : String(x).toLowerCase() === 'true';
     return toBool(a) === toBool(b);
   }
   if (typeof a === 'number' || typeof b === 'number') return Number(a) === Number(b);

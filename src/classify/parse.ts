@@ -1,10 +1,12 @@
 // Turns validated model output into final attribute values (SPEC §7.3–7.5).
-import {
-  LANGUAGE_MIN_PERCENTAGE,
-  LANGUAGE_OPTIONS,
-  NSFW_CONFIDENCE_ALONE,
-} from '../shared/constants';
-import type { AttributeDef, AttributeResult, DetectedLanguage, SampleItem, SubredditRecord } from '../shared/types';
+import { LANGUAGE_MIN_PERCENTAGE, LANGUAGE_OPTIONS, NSFW_CONFIDENCE_ALONE } from '../shared/constants';
+import type {
+  AttributeDef,
+  AttributeResult,
+  DetectedLanguage,
+  SampleItem,
+  SubredditRecord,
+} from '../shared/types';
 import { llmAttributes, optionsFor, type RawClassification } from './schema';
 
 export interface Normalized {
@@ -18,11 +20,24 @@ export interface Normalized {
 }
 
 const clamp01 = (n: number) => (Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0.5);
-const norm = (s: string) => s.trim().toLowerCase().replace(/[\s-]+/g, '_');
+const norm = (s: string) =>
+  s
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
 const shortReason = (s: string) => (s.length > 200 ? `${s.slice(0, 200)}…` : s);
 
-export function normalizeClassification(raw: RawClassification, attrs: AttributeDef[], topics: string[]): Normalized {
-  const out: Normalized = { summary: raw.summary.trim().slice(0, 300), values: {}, mappings: [], problems: [] };
+export function normalizeClassification(
+  raw: RawClassification,
+  attrs: AttributeDef[],
+  topics: string[],
+): Normalized {
+  const out: Normalized = {
+    summary: raw.summary.trim().slice(0, 300),
+    values: {},
+    mappings: [],
+    problems: [],
+  };
   for (const attr of llmAttributes(attrs)) {
     const entry = raw.attributes[attr.id];
     if (!entry) {
@@ -87,13 +102,19 @@ export function resolveLanguage(
   redditLang: string | undefined,
 ): AttributeResult {
   if (detected && languageIsSettled(detected)) {
-    const via = detected.source === 'browser.i18n' ? 'browser language detection' : "Reddit's post-language tags";
-    return { value: detected.code, confidence: detected.percentage / 100, reason: `${via}: ${detected.percentage}%` };
+    const via =
+      detected.source === 'browser.i18n' ? 'browser language detection' : "Reddit's post-language tags";
+    return {
+      value: detected.code,
+      confidence: detected.percentage / 100,
+      reason: `${via}: ${detected.percentage}%`,
+    };
   }
   if (guess && guess.value !== 'und') return { ...guess, reason: `model guess: ${guess.reason}` };
   if (redditLang) {
     const code = redditLang.toLowerCase().slice(0, 2);
-    if (LANGUAGE_OPTIONS.includes(code)) return { value: code, confidence: 0.5, reason: "Reddit's subreddit lang field" };
+    if (LANGUAGE_OPTIONS.includes(code))
+      return { value: code, confidence: 0.5, reason: "Reddit's subreddit lang field" };
   }
   return { value: 'und', confidence: 0, reason: 'not enough evidence' };
 }
@@ -112,7 +133,12 @@ export function languageFromPostTags(items: SampleItem[] | undefined): DetectedL
   }
   const [code, n] = [...counts].sort((a, b) => b[1] - a[1])[0]!;
   const percentage = Math.round((n / tagged.length) * 100);
-  return { code, percentage, reliable: percentage >= LANGUAGE_MIN_PERCENTAGE, source: 'reddit_post_language' };
+  return {
+    code,
+    percentage,
+    reliable: percentage >= LANGUAGE_MIN_PERCENTAGE,
+    source: 'reddit_post_language',
+  };
 }
 
 // ---- NSFW combination (§7.4) ----
@@ -137,7 +163,8 @@ export function finalizeValues(
 ): Record<string, AttributeResult> {
   const values = { ...normalized.values };
   const langAttr = attrs.find((a) => a.enabled && a.source === 'language_builtin');
-  if (langAttr) values[langAttr.id] = resolveLanguage(rec.detectedLanguage, normalized.languageGuess, rec.meta?.lang);
+  if (langAttr)
+    values[langAttr.id] = resolveLanguage(rec.detectedLanguage, normalized.languageGuess, rec.meta?.lang);
   if (values.nsfw_sexual) values.nsfw_sexual = combineNsfw(values.nsfw_sexual, rec.meta?.over18);
   return values;
 }

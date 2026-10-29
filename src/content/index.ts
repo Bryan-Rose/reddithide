@@ -100,7 +100,11 @@ function captureHeader(root: Element | Document): void {
   send({ type: 'subredditMeta', name: header.name, displayName: header.displayName, meta: header.meta });
   if (!sightedNames.has(header.name)) {
     sightedNames.add(header.name);
-    const entry = pending.get(header.name) ?? { name: header.name, displayName: header.displayName, sighting: false };
+    const entry = pending.get(header.name) ?? {
+      name: header.name,
+      displayName: header.displayName,
+      sighting: false,
+    };
     entry.sighting = true;
     pending.set(header.name, entry);
     scheduleFlush();
@@ -197,7 +201,8 @@ function setBlockSet(bs: BlockSet | undefined): void {
 }
 
 browser.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes[BLOCKSET_KEY]) setBlockSet(changes[BLOCKSET_KEY].newValue as BlockSet | undefined);
+  if (area === 'local' && changes[BLOCKSET_KEY])
+    setBlockSet(changes[BLOCKSET_KEY].newValue as BlockSet | undefined);
 });
 
 loadBlockSet()
@@ -206,7 +211,10 @@ loadBlockSet()
 
 browser.runtime.onMessage.addListener((msg: unknown) => {
   if ((msg as { type?: string })?.type === 'getPageStats') {
-    const stats: PageStats = { hidden: hiddenPostIds.size, pageSubreddits: subredditsFromPath(location.pathname) };
+    const stats: PageStats = {
+      hidden: hiddenPostIds.size,
+      pageSubreddits: subredditsFromPath(location.pathname),
+    };
     return Promise.resolve(stats);
   }
   return undefined;
