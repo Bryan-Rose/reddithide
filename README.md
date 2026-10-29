@@ -2,6 +2,8 @@
 
 A Firefox extension for **new Reddit** (`www.reddit.com`). It records the subreddits you see, classifies each one with an LLM you configure (topic, language, NSFW-sexual, gross, plus your own attributes), and hides posts from subreddits that match your filter rules. Everything runs inside the extension. The only outbound traffic goes to reddit.com (your normal browsing) and the LLM endpoints you configure.
 
+Firefox only (128+). You bring your own LLM: an API key for a hosted provider, or a local server such as Ollama.
+
 The full brief is in [SPEC.md](SPEC.md). This build covers milestones 1–4: capture, enrichment, providers and classification, filters and hiding. Milestones 5–6 (exports, backup/restore, compare page) are not built yet.
 
 ## Install (temporary, via about:debugging)

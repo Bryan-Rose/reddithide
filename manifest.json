@@ -5,7 +5,7 @@
   "description": "Records subreddits you see on new Reddit, classifies them with an LLM you configure, and hides posts that match your rules.",
   "browser_specific_settings": {
     "gecko": {
-      "id": "reddithide@local",
+      "id": "reddithide@bryanrose.net",
       "strict_min_version": "128.0",
       "data_collection_permissions": {
         "required": [

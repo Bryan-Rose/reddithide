@@ -62,7 +62,7 @@ manifest.json
 
 ## 3. Manifest and permissions
 
-- `browser_specific_settings.gecko.id`: e.g. `reddithide@local` (required for storage in MV3).
+- `browser_specific_settings.gecko.id`: `reddithide@bryanrose.net` (required for storage in MV3).
 - `permissions`: `storage`, `unlimitedStorage`, `alarms`.
 - `host_permissions`: `*://*.reddit.com/*`.
 - `optional_host_permissions`: `*://*/*`, `http://localhost/*`, `http://127.0.0.1/*`. When the user saves an LLM provider profile, call `browser.permissions.request({ origins: [<origin of baseUrl>/*] })` **inside the click handler** (it needs a user gesture).
