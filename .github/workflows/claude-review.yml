@@ -1,6 +1,8 @@
 # Claude reviews each PR and keeps one comment up to date (advisory, not a required check).
 # Logic lives in Bryan-Rose/agent-kit. Needs the ANTHROPIC_API_KEY (or CLAUDE_CODE_OAUTH_TOKEN) secret.
 # Label a PR review:deep to re-review on the deep model; dispatch to review any PR into the run summary.
+# The reusable workflow skips drafts, forks, Dependabot and labels other than review:deep, picks the
+# deep model for review:deep, reads the dispatch `pr` input itself and runs one review per PR at a time.
 name: Claude review
 
 on:
@@ -21,9 +23,9 @@ jobs:
       contents: read
       pull-requests: write
       issues: read
-    uses: Bryan-Rose/agent-kit/.github/workflows/claude-review.yml@main # switch to @v1 once tagged
+    uses: Bryan-Rose/agent-kit/.github/workflows/claude-review.yml@v1
     with:
-      model: ${{ inputs.model || 'claude-sonnet-5-5' }}
+      model: ${{ inputs.model || 'claude-haiku-5-5' }}
     # Only the API secret: `inherit` would hand every repo secret to agent-kit's workflow.
     secrets:
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}

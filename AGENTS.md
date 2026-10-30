@@ -44,7 +44,7 @@ gh pr checks --watch                              # wait for the required checks
 gh run view --log-failed                          # if a check fails: read the failing log, fix, push again
 ```
 
-- **`make check` runs everything CI runs.** Run it before every commit.
+- **Run `make check` before every commit.** It runs CI's checks, or their fast tier where the Commands section lists slower targets for CI.
 - **One branch and one PR per task.** Never commit to `main`. Push the fix to the same branch and CI re-runs.
 - **Work is tracked in GitHub issues.** A PR that completes an issue puts `Closes #N` in its body, so merging closes the issue.
 - **Agents push task branches and open their PRs without asking.** That's the maintainer's standing approval for this repo. It doesn't cover pushing to `main`, force-pushing, or merging.
