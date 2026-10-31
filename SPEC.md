@@ -236,7 +236,7 @@ Failures increment `attempts`; after 3 attempts the record goes to `failed` with
 | `POST /login` | Exchanges the token for an `HttpOnly`, `SameSite=Strict`, `Secure` cookie for the server's pages |
 | `GET /healthz` | `200` if the server can open its database. No auth and no data |
 
-Every endpoint except `/healthz`, `/login` and the login page needs the bearer token, compared in constant time. `/api/rpc` also accepts the login cookie, and cookie-authenticated requests must have an `Origin` header matching the server. All input is validated with zod under a body size limit, because the server receives scraped page data.
+Every endpoint except `/healthz`, `/login` and the login page needs the bearer token, compared in constant time. `/api/rpc` also accepts the login cookie, and cookie-authenticated requests must have an `Origin` header equal to the server's public address. That address comes from the `PUBLIC_ORIGIN` environment variable (for example `https://reddithide.example.ts.net`). A missing or different `Origin` is rejected, and forwarded headers are not trusted. All input is validated with zod under a body size limit, because the server receives scraped page data.
 
 ---
 
@@ -477,7 +477,7 @@ Served by the server, like the review and compare pages, behind a login page tha
 - Only public subreddit data (names, descriptions, titles) goes to LLM providers. Never send the user's identity, cookies, browsing history or URLs.
 - The extension sends the server subreddit names, post ids and titles, Reddit's language and NSFW flags, descriptions and visitor counts. It never sends cookies, account details or page URLs. What the server stores still reveals which subreddits the user sees, so it stays a private server.
 - The server never contacts Reddit, and nothing is ever sent back to Reddit (no votes, joins or posts). Its only outbound traffic goes to the LLM endpoints the user configures.
-- Single user, one token. The token is required, and the server refuses to start without one. It grants everything, including reading the API keys through `getSettings`. The extension never exposes it to page context: only the background script reads it, and content scripts read only `blockSet`.
+- Single user, one token. The token and `PUBLIC_ORIGIN` (§5.4) are required, and the server refuses to start without them. It grants everything, including reading the API keys through `getSettings`. The extension never exposes it to page context: only the background script reads it, and content scripts read only `blockSet`.
 - Reach the server over a private network such as Tailscale, not the public internet. The login cookie is `Secure`, so the pages need HTTPS, which is set up outside this repo.
 - Data from Reddit and from LLMs is untrusted, on the server too. Validate it at the API, render it as text, never with `innerHTML`, and sanitize anything shown as a link. The server's pages send a strict CSP header, because they lose the extension CSP when they move.
 - API keys, and the backups that contain them, are stored unencrypted on the server. Say so on the options page and in the README, and recommend keys with spending limits.
