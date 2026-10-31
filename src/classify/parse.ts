@@ -4,6 +4,8 @@ import type {
   AttributeDef,
   AttributeResult,
   DetectedLanguage,
+  LanguageEvidence,
+  LanguageTally,
   SampleItem,
   SubredditRecord,
 } from '../shared/types';
@@ -100,6 +102,7 @@ export function resolveLanguage(
   detected: DetectedLanguage | undefined,
   guess: AttributeResult | undefined,
   redditLang: string | undefined,
+  evidence?: LanguageEvidence,
 ): AttributeResult {
   if (detected && languageIsSettled(detected)) {
     const via =
@@ -111,12 +114,42 @@ export function resolveLanguage(
     };
   }
   if (guess && guess.value !== 'und') return { ...guess, reason: `model guess: ${guess.reason}` };
+  const tallies = [
+    ['Firefox language detection', evidence?.firefox],
+    ["Reddit's post-language tags", evidence?.reddit],
+  ] as const;
+  for (const [via, t] of tallies) {
+    if (!t || t.count < 3 || (t.count / t.total) * 100 < LANGUAGE_MIN_PERCENTAGE) continue;
+    if (LANGUAGE_OPTIONS.includes(t.code))
+      return { value: t.code, confidence: t.count / t.total, reason: `${via}: ${t.count} of ${t.total}` };
+  }
   if (redditLang) {
     const code = redditLang.toLowerCase().slice(0, 2);
     if (LANGUAGE_OPTIONS.includes(code))
       return { value: code, confidence: 0.5, reason: "Reddit's subreddit lang field" };
   }
   return { value: 'und', confidence: 0, reason: 'not enough evidence' };
+}
+
+/** The most common code among `codes`, ignoring empty values and `und`. */
+function tally(codes: (string | undefined)[]): LanguageTally | undefined {
+  const counts = new Map<string, number>();
+  let total = 0;
+  for (const c of codes) {
+    const code = c?.toLowerCase().slice(0, 2);
+    if (!code || code === 'un') continue;
+    counts.set(code, (counts.get(code) ?? 0) + 1);
+    total++;
+  }
+  const top = [...counts].sort((a, b) => b[1] - a[1])[0];
+  return top && { code: top[0], count: top[1], total };
+}
+
+export function buildLanguageEvidence(items: SampleItem[] | undefined): LanguageEvidence {
+  return {
+    reddit: tally((items ?? []).map((i) => i.lang)),
+    firefox: tally((items ?? []).map((i) => i.browserLang)),
+  };
 }
 
 /**
@@ -164,7 +197,12 @@ export function finalizeValues(
   const values = { ...normalized.values };
   const langAttr = attrs.find((a) => a.enabled && a.source === 'language_builtin');
   if (langAttr)
-    values[langAttr.id] = resolveLanguage(rec.detectedLanguage, normalized.languageGuess, rec.meta?.lang);
+    values[langAttr.id] = resolveLanguage(
+      rec.detectedLanguage,
+      normalized.languageGuess,
+      rec.meta?.lang,
+      rec.languageEvidence,
+    );
   if (values.nsfw_sexual) values.nsfw_sexual = combineNsfw(values.nsfw_sexual, rec.meta?.over18);
   return values;
 }

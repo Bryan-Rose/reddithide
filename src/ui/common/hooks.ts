@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'preact/hooks';
 import browser from '../../shared/browser';
-import { isSettingsKey, loadSettings, saveSettings } from '../../shared/settings';
+import { isSettingsKey } from '../../shared/settings';
+import { loadSettings, saveSettings } from '../../shared/settingsStore';
 import type { Settings } from '../../shared/types';
 
 /** Live settings: reloads whenever storage.local changes. */
