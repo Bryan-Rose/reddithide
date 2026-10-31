@@ -44,7 +44,7 @@ The user browses **new Reddit**. RES does **not** run on new Reddit; it only sup
 | UI | Preact for the popup and the server's pages; plain DOM in content scripts |
 | Server storage | SQLite (§4), one connection, accessed **only from the server** |
 | Extension storage | `browser.storage.local`: the cached block set, the outbox, the server URL and the token |
-| Validation | `zod` v4, using `z.toJSONSchema()` to generate JSON Schema for LLM requests. **Do not use Ajv or any library that calls `eval`/`new Function`**, because the extension and server CSPs block them. |
+| Validation | `zod` v4, using `z.toJSONSchema()` to generate JSON Schema for LLM requests. **Do not use Ajv or any library that calls `eval`/`new Function`**, because the CSPs block them on extension pages and on the pages the server serves. |
 | Browser API | `webextension-polyfill` types / the `browser.*` namespace |
 | Dev tooling | `web-ext` (run, lint, build), Vitest (unit tests), ESLint + Prettier |
 
@@ -75,7 +75,7 @@ manifest.json
 ## 3. Manifest and permissions
 
 - `browser_specific_settings.gecko.id`: `reddithide@bryanrose.net` (required for storage in MV3).
-- `permissions`: `storage`, `alarms`.
+- `permissions`: `storage`, `unlimitedStorage`, `alarms`. `unlimitedStorage` stops a full outbox (§5.3) from hitting a quota, which could also block block set writes.
 - `host_permissions`: `*://*.reddit.com/*`.
 - `optional_host_permissions`: `*://*/*`, because the server URL is entered at runtime. When the user saves the server URL, call `browser.permissions.request({ origins: [<server origin>/*] })` **inside the click handler** (it needs a user gesture). Request that origin only.
 - Content script: matches `*://www.reddit.com/*`, `run_at: document_start`.
@@ -376,7 +376,7 @@ The user can add, edit, disable and reorder attributes. Example ideas for the UI
 ### 7.3 Language
 Reddit's tags are often wrong or `und`, and titles can be machine-translated, so no single signal decides.
 
-1. The LLM decides, unless it answers `und`. It is always asked for a `language_guess` (§7.5), using the original title wording, the description and both `languageEvidence` summaries.
+1. The LLM decides, unless it answers `und`. When the `language` attribute is enabled, it is always asked for a `language_guess` (§7.5), using the original title wording, the description and both `languageEvidence` summaries.
 2. If it answers `und`, use `languageEvidence.firefox`, then `languageEvidence.reddit`, if that summary's `count` is at least 3 and at least 70% of its `total`.
 3. Otherwise use `und`.
 
@@ -394,7 +394,7 @@ Reddit's `over18` flag covers gore as well as sexual content. That's why the LLM
     "attributes": { "<id>": { "value": <bool|string|string[]>, "confidence": 0.0, "reason": "string" } },
     "language_guess": { "value": "string", "confidence": 0.0, "reason": "string" } }
   ```
-  `language_guess` is an ISO 639-1 code, `mixed` or `und`, and is requested whenever the `language` attribute is enabled. Validate enum values against the configured options. Unknown topic values map to `other`, and the mapping is logged.
+  `language_guess` is an ISO 639-1 code, `mixed` or `und`, requested as §7.3 says. Validate enum values against the configured options. Unknown topic values map to `other`, and the mapping is logged.
 - **rubricVersion** = short hash (SHA-256 via `crypto.subtle`, first 12 hex chars) of the system prompt template plus the enabled attribute definitions plus the topic list. Any edit changes it, and the review page then offers "N subreddits classified with an older rubric — re-run?" Never re-run automatically, because it costs money.
 
 One subreddit per LLM request in v1. Batching several subreddits per request is a possible later optimization; don't build it now.
@@ -420,7 +420,7 @@ interface Condition {
 
 - Evaluate a subreddit using `overrides` first, then `classification`. If the needed attribute has no value, the condition is **false**. Unclassified subreddits are handled by the `hideUnclassified` behavior setting instead (§9).
 - The evaluator is a pure function in `src/filters/`, with thorough unit tests.
-- The **effective block set** for the active list = (subreddits matching the rule ∪ `manualBlock`) − `manualAllow`. The server recomputes it when data changes and stores it with an `updatedAt` that changes only when its content does, or when the server starts. Restoring a backup needs a restart, so the restored set always has a newer `updatedAt` than any device's cached set. The extension fetches it (§5.3) and caches it in `storage.local` as `{ type: 'blockSet', names, reasons, behavior, okNames?, updatedAt }`, where content scripts read it.
+- The **effective block set** for the active list = (subreddits matching the rule ∪ `manualBlock`) − `manualAllow`. The server recomputes it when data changes and stores it with an `updatedAt` that changes only when its content does, or when the server starts. Restoring a backup needs a restart, so the restored set always has a newer `updatedAt` than any device's cached set. The extension fetches it (§5.3) and caches it in `storage.local` as `{ type: 'blockSet', names, reasons, behavior, okNames?, updatedAt }`, where content scripts read it. `okNames` is present only when `hideUnclassified` is on, and lists names known to be fine: classified and not blocked, or manually allowed.
 - The review UI has a rule builder (nested groups, add/remove conditions, value pickers built from the attribute definitions) and a **live preview** of how many subreddits match, with a list of them.
 
 ---
