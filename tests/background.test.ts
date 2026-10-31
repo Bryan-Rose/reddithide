@@ -1,49 +1,30 @@
-import 'fake-indexeddb/auto';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-
-vi.mock('../src/shared/browser', () => ({
-  default: {
-    storage: {
-      local: { get: vi.fn(async () => ({})), set: vi.fn(), remove: vi.fn() },
-      onChanged: { addListener: vi.fn() },
-    },
-    i18n: { detectLanguage: vi.fn() },
-    action: { setBadgeText: vi.fn(), setBadgeBackgroundColor: vi.fn() },
-  },
-}));
-
-const { clearAll, getRecord } = await import('../src/background/db');
-const { ingestMeta, ingestSeen } = await import('../src/background/ingest');
-const { samplesReady, priority } = await import('../src/background/pipeline');
-const { buildBlockSet } = await import('../src/background/blockset');
-const { Limiter } = await import('../src/background/limiter');
-const { countStates } = await import('../src/background/router');
-const { defaultSettings } = await import('../src/shared/settings');
+import { beforeEach, describe, expect, it } from 'vitest';
+import { buildBlockSet } from '../src/server/blockset';
+import { clearAll, getRecord, openDb } from '../src/server/db';
+import { ingestMeta, ingestSeen } from '../src/server/ingest';
+import { Limiter } from '../src/server/limiter';
+import { priority, samplesReady } from '../src/server/pipeline';
+import { countStates } from '../src/server/router';
+import { defaultSettings } from '../src/shared/settings';
 import type { SubredditRecord } from '../src/shared/types';
 
-beforeEach(async () => {
-  await clearAll();
+openDb(':memory:');
+
+beforeEach(() => {
+  clearAll();
 });
 
 describe('ingestSeen', () => {
-  it('creates records and counts sightings once per page view', async () => {
-    await ingestSeen(
-      { type: 'seen', url: '', names: [{ name: 'Cats', displayName: 'Cats', sighting: true }] },
-      1000,
-    );
-    await ingestSeen(
+  it('creates records and counts sightings once per page view', () => {
+    ingestSeen({ names: [{ name: 'Cats', displayName: 'Cats', sighting: true }] }, 1000);
+    ingestSeen(
       {
-        type: 'seen',
-        url: '',
         names: [{ name: 'cats', displayName: 'Cats', sighting: false, posts: [{ id: 't3_1', title: 'A' }] }],
       },
       2000,
     );
-    await ingestSeen(
-      { type: 'seen', url: '', names: [{ name: 'cats', displayName: 'Cats', sighting: true }] },
-      3000,
-    );
-    const r = (await getRecord('cats'))!;
+    ingestSeen({ names: [{ name: 'cats', displayName: 'Cats', sighting: true }] }, 3000);
+    const r = getRecord('cats')!;
     expect(r.seenCount).toBe(2);
     expect(r.firstSeenAt).toBe(1000);
     expect(r.lastSeenAt).toBe(3000);
@@ -53,53 +34,44 @@ describe('ingestSeen', () => {
 
   it('dedupes titles by post id, newest first, capped at 25', async () => {
     const posts = Array.from({ length: 30 }, (_, i) => ({ id: `t3_${i}`, title: `T${i}`, lang: 'en' }));
-    await ingestSeen({
-      type: 'seen',
-      url: '',
+    ingestSeen({
       names: [{ name: 'x1', displayName: 'x1', sighting: true, posts: posts.slice(0, 10) }],
     });
-    await ingestSeen({
-      type: 'seen',
-      url: '',
+    ingestSeen({
       names: [{ name: 'x1', displayName: 'x1', sighting: false, posts }],
     });
-    const r = (await getRecord('x1'))!;
+    const r = getRecord('x1')!;
     expect(r.samples!.titles).toHaveLength(25);
     expect(r.samples!.titles[0]).toBe('T10');
     expect(new Set(r.samples!.items!.map((i) => i.id)).size).toBe(25);
   });
 
-  it('ignores invalid and user-profile names', async () => {
-    await ingestSeen({
-      type: 'seen',
-      url: '',
+  it('ignores invalid and user-profile names', () => {
+    ingestSeen({
       names: [
         { name: 'u_someone', displayName: 'u_someone', sighting: true },
         { name: 'bad name!', displayName: 'x', sighting: true },
       ],
     });
-    expect(await getRecord('u_someone')).toBeUndefined();
+    expect(getRecord('u_someone')).toBeUndefined();
   });
 
-  it('records the nsfw flag from search results', async () => {
-    await ingestSeen({
-      type: 'seen',
-      url: '',
+  it('records the nsfw flag from search results', () => {
+    ingestSeen({
       names: [{ name: 'spicy', displayName: 'spicy', sighting: true, over18: true }],
     });
-    expect((await getRecord('spicy'))!.meta).toMatchObject({ over18: true, source: 'dom' });
+    expect(getRecord('spicy')!.meta).toMatchObject({ over18: true, source: 'dom' });
   });
 });
 
 describe('ingestMeta', () => {
-  it('merges subreddit header metadata', async () => {
-    await ingestMeta({
-      type: 'subredditMeta',
+  it('merges subreddit header metadata', () => {
+    ingestMeta({
       name: 'Python',
       displayName: 'Python',
       meta: { publicDescription: 'Snakes? No.', weeklyActiveUsers: 5 },
     });
-    const r = (await getRecord('python'))!;
+    const r = getRecord('python')!;
     expect(r.meta).toMatchObject({ publicDescription: 'Snakes? No.', weeklyActiveUsers: 5 });
     expect(r.seenCount).toBe(1);
   });

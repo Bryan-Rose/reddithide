@@ -1,7 +1,8 @@
 // In-memory settings cache for the background, refreshed on storage changes.
 import { computeRubricVersion } from '../classify/rubric';
 import browser from '../shared/browser';
-import { isSettingsKey, loadSettings } from '../shared/settings';
+import { isSettingsKey } from '../shared/settings';
+import { loadSettings } from '../shared/settingsStore';
 import type { Settings } from '../shared/types';
 
 let settings: Settings | null = null;

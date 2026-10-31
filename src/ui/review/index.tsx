@@ -1,6 +1,7 @@
 import { render } from 'preact';
 import { useMemo, useState } from 'preact/hooks';
-import { rpc, type RpcMethods } from '../../shared/messages';
+import type { RpcMethods } from '../../shared/messages';
+import { rpc } from '../../shared/rpc';
 import type { PipelineState, Settings, SubredditRow, UsageRow } from '../../shared/types';
 import { effective, formatValue } from '../common/format';
 import { usePoll, useSettings } from '../common/hooks';

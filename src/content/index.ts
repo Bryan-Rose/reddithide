@@ -3,7 +3,8 @@
 import browser from '../shared/browser';
 import type { ContentToBackground, PageStats, SeenName } from '../shared/messages';
 import { subredditsFromPath } from '../shared/names';
-import { BLOCKSET_KEY, loadBlockSet } from '../shared/settings';
+import { BLOCKSET_KEY } from '../shared/settings';
+import { loadBlockSet } from '../shared/settingsStore';
 import type { BlockSet } from '../shared/types';
 import { extractPosts, extractSubredditHeader, type ExtractedPost } from './extract';
 import { applyHide, HIDE_ATTR, makeContext, PRELOAD_STYLESHEET, STYLESHEET, type HideContext } from './hide';

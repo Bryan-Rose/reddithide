@@ -1,10 +1,10 @@
-import browser from './browser';
 import type {
   AttributeValue,
   ProviderProfile,
   QueueCounts,
   RuleGroup,
   RuntimeStatus,
+  Settings,
   SubredditRecord,
   SubredditRow,
   UsageRow,
@@ -16,6 +16,10 @@ export interface SeenPost {
   id: string;
   title: string;
   lang?: string;
+  /** Original wording from the post's link (SPEC §5.1). */
+  originalTitle?: string;
+  /** Firefox's language result on the original wording (SPEC §5.3). */
+  browserLang?: string;
 }
 
 export interface SeenName {
@@ -54,6 +58,11 @@ export interface PageStatsMessage {
 }
 
 export type ContentToBackground = SeenMessage | SubredditMetaMessage | PageStatsMessage;
+
+/** Body of POST /api/seen: the `seen` message without its page URL (SPEC §5.3). */
+export type SeenBatch = Pick<SeenMessage, 'names'>;
+/** Body of POST /api/meta. */
+export type MetaBatch = Omit<SubredditMetaMessage, 'type'>;
 
 // ---- Popup → content script ----
 
@@ -115,13 +124,15 @@ export interface RpcRequest<M extends RpcMethod = RpcMethod> {
 export type RpcResponse<M extends RpcMethod> =
   { ok: true; result: RpcMethods[M]['result'] } | { ok: false; error: string };
 
-export async function rpc<M extends RpcMethod>(
-  method: M,
-  ...args: RpcMethods[M]['params'] extends void ? [] : [RpcMethods[M]['params']]
-): Promise<RpcMethods[M]['result']> {
-  const req: RpcRequest<M> = { type: 'rpc', method, params: args[0] as RpcMethods[M]['params'] };
-  const res = (await browser.runtime.sendMessage(req)) as RpcResponse<M> | undefined;
-  if (!res) throw new Error('No response from background');
-  if (!res.ok) throw new Error(res.error);
-  return res.result;
-}
+/** `null` removes an optional setting, because JSON has no `undefined`. */
+export type SettingsPatch = { [K in keyof Settings]?: Settings[K] | null };
+
+/** The server's RPC: the permission check stays in the extension, and settings move here. */
+export type ServerRpcMethods = Omit<RpcMethods, 'checkRedditPermission'> & {
+  getSettings: { params: void; result: Settings };
+  saveSettings: { params: SettingsPatch; result: void };
+  /** clearAllData plus settings, providers and API keys. */
+  resetAll: { params: void; result: void };
+};
+
+export type ServerRpcMethod = keyof ServerRpcMethods;

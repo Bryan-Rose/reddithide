@@ -1,4 +1,3 @@
-import browser from './browser';
 import {
   DEFAULT_ATTRIBUTES,
   DEFAULT_BEHAVIOR,
@@ -7,7 +6,7 @@ import {
   DEFAULT_QUEUE,
   DEFAULT_TOPICS,
 } from './constants';
-import type { BlockSet, RuntimeStatus, Settings } from './types';
+import type { RuntimeStatus, Settings } from './types';
 
 export const SETTINGS_KEYS = [
   'attributes',
@@ -59,36 +58,10 @@ function stripUndefined<T extends object>(o: T): Partial<T> {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>;
 }
 
-export async function loadSettings(): Promise<Settings> {
-  const stored = (await browser.storage.local.get([...SETTINGS_KEYS])) as Partial<Settings>;
-  return withDefaults(stored);
-}
-
-export async function saveSettings(patch: Partial<Settings>): Promise<void> {
-  const toSet: Record<string, unknown> = {};
-  const toRemove: string[] = [];
-  for (const [k, v] of Object.entries(patch)) {
-    if (v === undefined) toRemove.push(k);
-    else toSet[k] = v;
-  }
-  if (Object.keys(toSet).length) await browser.storage.local.set(toSet);
-  if (toRemove.length) await browser.storage.local.remove(toRemove);
-}
-
 export function isSettingsKey(k: string): k is (typeof SETTINGS_KEYS)[number] {
   return (SETTINGS_KEYS as readonly string[]).includes(k);
 }
 
-export async function loadBlockSet(): Promise<BlockSet | undefined> {
-  const r = await browser.storage.local.get(BLOCKSET_KEY);
-  return r[BLOCKSET_KEY] as BlockSet | undefined;
-}
-
 export function defaultRuntimeStatus(): RuntimeStatus {
   return { errors: [], backoffUntil: {}, redditPermission: true };
-}
-
-export async function loadRuntimeStatus(): Promise<RuntimeStatus> {
-  const r = await browser.storage.local.get(RUNTIME_KEY);
-  return { ...defaultRuntimeStatus(), ...(r[RUNTIME_KEY] as RuntimeStatus | undefined) };
 }

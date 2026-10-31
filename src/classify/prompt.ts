@@ -20,7 +20,7 @@ Output rules:
 - Use only the allowed values listed for each attribute.{{EXTRA_RULES}}`;
 
 const LANGUAGE_GUESS_RULE = `
-- "language_guess": the main language of the posts as an ISO 639-1 code ("mixed" if several are common, "und" if unknown), with confidence and reason.`;
+- "language_guess": the main language of the posts as an ISO 639-1 code ("mixed" if several are common, "und" if unknown), with confidence and reason. Displayed titles may be machine-translated, so judge by their original wording when it is given. The language evidence can be wrong.`;
 
 function describeAttribute(attr: AttributeDef, topics: string[]): string {
   const head = `- ${attr.id} (${attr.label}): ${attr.definition.trim()}`;
@@ -63,6 +63,24 @@ function clean(s: string): string {
     .trim();
 }
 
+const lettersOnly = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '');
+
+/** `originalTitle` is lowercase, unpunctuated and may be cut off, so compare letters only. */
+function titleLine(title: string, original: string | undefined): string {
+  const line = `- ${clean(truncate(title, TITLE_MAX))}`;
+  if (!original || lettersOnly(title).startsWith(lettersOnly(original))) return line;
+  return `${line} (original wording: ${clean(truncate(original, TITLE_MAX))})`;
+}
+
+function evidenceLine(rec: SubredditRecord): string | undefined {
+  const { reddit, firefox } = rec.languageEvidence ?? {};
+  const parts = [
+    reddit && `Reddit tags ${reddit.code} (${reddit.count} of ${reddit.total})`,
+    firefox && `Firefox ${firefox.code} (${firefox.count} of ${firefox.total})`,
+  ].filter(Boolean);
+  return parts.length ? `Language evidence: ${parts.join('; ')}` : undefined;
+}
+
 export function buildUserMessage(rec: SubredditRecord): string {
   const m = rec.meta;
   const lines: string[] = [];
@@ -76,10 +94,12 @@ export function buildUserMessage(rec: SubredditRecord): string {
   const titles = (rec.samples?.titles ?? []).slice(0, MAX_TITLES);
   if (titles.length) {
     lines.push(`Recent post titles (${titles.length}):`);
-    for (const t of titles) lines.push(`- ${clean(truncate(t, TITLE_MAX))}`);
+    titles.forEach((t, i) => lines.push(titleLine(t, rec.samples?.items?.[i]?.originalTitle)));
   } else {
     lines.push('Recent post titles: none available');
   }
+  const evidence = evidenceLine(rec);
+  if (evidence) lines.push(evidence);
   return `<subreddit_data>\n${lines.join('\n')}\n</subreddit_data>\n\nClassify this subreddit.`;
 }
 

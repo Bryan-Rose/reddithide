@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'preact/hooks';
-import { rpc } from '../../shared/messages';
+import { rpc } from '../../shared/rpc';
 import { subredditUrl } from '../../shared/names';
 import type { AttributeDef, AttributeValue, Settings, SubredditRecord } from '../../shared/types';
 import { formatAgo, formatNumber, formatValue } from '../common/format';

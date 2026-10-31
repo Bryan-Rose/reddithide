@@ -2,7 +2,8 @@
 // storage.local (they read it at document_start and listen for changes).
 import { computeBlockSet } from '../filters/evaluate';
 import browser from '../shared/browser';
-import { BLOCKSET_KEY, loadBlockSet } from '../shared/settings';
+import { BLOCKSET_KEY } from '../shared/settings';
+import { loadBlockSet } from '../shared/settingsStore';
 import type { BlockSet, SubredditRecord } from '../shared/types';
 import { getAllRecords } from './db';
 import { getSettings } from './state';

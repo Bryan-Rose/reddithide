@@ -1,7 +1,8 @@
 import { render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import browser from '../../shared/browser';
-import { rpc, type PageStats, type RpcMethods } from '../../shared/messages';
+import type { PageStats, RpcMethods } from '../../shared/messages';
+import { rpc } from '../../shared/rpc';
 import type { SubredditRecord } from '../../shared/types';
 import { effective, formatValue } from '../common/format';
 import { usePoll, useSettings } from '../common/hooks';
