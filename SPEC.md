@@ -1,8 +1,10 @@
 # RedditHide — Specification
 
-A Firefox extension that records the subreddits a user encounters on **new Reddit** (`www.reddit.com`), classifies each subreddit automatically with a configurable LLM, and hides posts from subreddits that match user-defined filter rules. It can also export the resulting block lists for other tools.
+A Firefox extension plus a small personal server. The extension records the subreddits a user encounters on **new Reddit** (`www.reddit.com`) and hides posts on the page. The server classifies each subreddit automatically with a configurable LLM, holds the only copy of the data, and works out which subreddits match the user-defined filter rules. It can also export the resulting block lists for other tools.
 
 This document is the full brief. It assumes no prior context. Where it says **VERIFY**, the information came from memory or may have changed; check it against the live site or the official documentation before relying on it.
+
+**Status:** this spec describes the server design. `main` stays a self-contained extension until the cutover in issue #23. Epic #25 tracks the steps.
 
 ---
 
@@ -10,17 +12,19 @@ This document is the full brief. It assumes no prior context. Where it says **VE
 
 ### Goals
 1. **Capture**: record every subreddit whose posts appear in the user's feeds and searches on new Reddit, with no action from the user.
-2. **Enrich**: fetch public metadata and sample post titles for each subreddit.
+2. **Enrich**: collect public metadata and sample post titles for each subreddit from the pages the user browses.
 3. **Classify automatically**: assign attributes (topic, language, NSFW-sexual, gross, plus user-defined ones) using software, not the user. The user does not tag subreddits by hand. They can correct a label, but that is optional.
 4. **Swappable LLM back ends**: Anthropic Claude, OpenAI, any OpenAI-compatible hosted provider (Kimi/Moonshot, DeepSeek, Groq, OpenRouter, Together, Mistral, …), and local models (Ollama, LM Studio, llama.cpp server, vLLM).
 5. **Filter**: the user builds rules over the attributes (e.g. `language != en OR gross = true OR topic in {crypto, sports}`). Posts from matching subreddits are hidden on new Reddit.
 6. **Export**: block lists as plain text, uBlock Origin cosmetic filters, and RES (Reddit Enhancement Suite) format. See §10 for why RES is secondary.
+7. **One copy across devices**: desktop and phone share the same data, provider setup and block set. Data survives browser restarts. Each subreddit is classified once.
 
 ### Non-goals (v1)
 - Chrome or Safari support. Keep browser-specific code isolated so a port stays possible, but don't test it.
 - old.reddit.com support.
 - Classifying individual posts. The unit of classification is the subreddit.
-- Any server or backend. Everything runs in the extension. The only outbound traffic goes to reddit.com and the LLM endpoints the user configures.
+- A standalone mode without the server. Two full copies of the app would need a merge engine, and a provider setup per device, and a phone cannot reach a local LLM.
+- Multiple users, or a server exposed to the public internet (§12).
 - Using the Reddit OAuth API or Reddit's "mute community" feature.
 
 ### Important constraint
@@ -32,27 +36,35 @@ The user browses **new Reddit**. RES does **not** run on new Reddit; it only sup
 
 | Concern | Choice |
 |---|---|
-| Platform | Firefox WebExtension, **Manifest V3**, `background.scripts` (event page, not service worker) |
+| Extension platform | Firefox WebExtension, **Manifest V3**, `background.scripts` (event page, not service worker) |
 | Minimum Firefox | 128 (ESR) |
+| Server platform | Node 24.15+, `node:http`, `node:sqlite`, one Docker container. No new runtime dependencies |
 | Language | TypeScript, `strict: true` |
-| Bundler | esbuild (one bundle per entry point) |
-| UI | Preact for the extension pages; plain DOM in content scripts |
-| Storage | IndexedDB via the `idb` package, accessed **only from the background script** |
-| Settings | `browser.storage.local` |
-| Validation | `zod` v4, using `z.toJSONSchema()` to generate JSON Schema for LLM requests. **Do not use Ajv or any library that calls `eval`/`new Function`**, because MV3 CSP blocks them. |
+| Bundler | esbuild (one bundle per entry point, plus a server build target) |
+| UI | Preact for the popup and the server's pages; plain DOM in content scripts |
+| Server storage | SQLite (§4), one connection, accessed **only from the server** |
+| Extension storage | `browser.storage.local`: the cached block set, the outbox, the server URL and the token |
+| Validation | `zod` v4, using `z.toJSONSchema()` to generate JSON Schema for LLM requests. **Do not use Ajv or any library that calls `eval`/`new Function`**, because the extension and server CSPs block them. |
 | Browser API | `webextension-polyfill` types / the `browser.*` namespace |
 | Dev tooling | `web-ext` (run, lint, build), Vitest (unit tests), ESLint + Prettier |
+
+Two parts, one copy of the data:
+
+- **Extension (thin).** `src/content` captures and hides. Hiding reads the cached `blockSet` from `storage.local` before paint, so it keeps working while the server is unreachable. A small background script relays captures to the server and refreshes the block set (§5.3). The popup keeps status, the on/off switch and the Reddit permission check, and gains server URL and token fields.
+- **Server.** Holds the pipeline, filters, providers, settings, and the options and review pages. It serves plain HTTP on one port. HTTPS and network access are handled outside this repo. It never contacts Reddit.
 
 Directory layout (suggested):
 ```
 src/
-  background/       queue, pipeline, db, rate limiters, message router
+  background/       relay to the server, outbox, block set refresh
   content/          DOM capture + hiding on reddit.com
+  server/           HTTP API, SQLite db, pipeline, ingest, rate limiters, RPC router, block set, backups
   providers/        LLM connectors (anthropic.ts, openaiCompatible.ts, types.ts)
   classify/         prompt building, schema, response parsing, rubric versioning
   filters/          rule model + evaluator
   export/           exporters
-  ui/popup/  ui/options/  ui/review/  ui/compare/
+  ui/popup/         extension popup
+  ui/options/  ui/review/  ui/compare/   pages served by the server
   shared/           types, messages, constants
 tests/              unit tests + DOM fixtures
 manifest.json
@@ -63,20 +75,22 @@ manifest.json
 ## 3. Manifest and permissions
 
 - `browser_specific_settings.gecko.id`: `reddithide@bryanrose.net` (required for storage in MV3).
-- `permissions`: `storage`, `unlimitedStorage`, `alarms`.
+- `permissions`: `storage`, `alarms`.
 - `host_permissions`: `*://*.reddit.com/*`.
-- `optional_host_permissions`: `*://*/*`, `http://localhost/*`, `http://127.0.0.1/*`. When the user saves an LLM provider profile, call `browser.permissions.request({ origins: [<origin of baseUrl>/*] })` **inside the click handler** (it needs a user gesture).
-- Content script: matches `*://www.reddit.com/*`, `run_at: document_idle`.
-- **VERIFY**: in Firefox MV3, host permissions may not be granted at install. On startup, check `browser.permissions.contains` for reddit.com. If it's missing, the popup and options page show a "Grant access to reddit.com" button.
+- `optional_host_permissions`: `*://*/*`, because the server URL is entered at runtime. When the user saves the server URL, call `browser.permissions.request({ origins: [<server origin>/*] })` **inside the click handler** (it needs a user gesture). Request that origin only.
+- Content script: matches `*://www.reddit.com/*`, `run_at: document_start`.
+- **VERIFY**: in Firefox MV3, host permissions may not be granted at install. On startup, check `browser.permissions.contains` for reddit.com. If it's missing, the popup shows a "Grant access to reddit.com" button.
 
 ---
 
-## 4. Data model (IndexedDB)
+## 4. Data model (SQLite)
 
-Database `reddithide`, version 1. Every timestamp is epoch milliseconds.
+One SQLite database on the server, on a Docker volume. Every timestamp is epoch milliseconds.
 
-### Store `subreddits` (keyPath `name`)
-`name` is the lowercased subreddit name without the `r/` prefix.
+**Transactions are synchronous: no `await` between `BEGIN` and `COMMIT`.** There is one connection, so an `await` would let another request run inside the transaction.
+
+### Table `subreddits`
+Columns: `name` (primary key), `pipeline_state` and `pending_at` (both indexed), and the record below as JSON. `name` is the lowercased subreddit name without the `r/` prefix.
 
 ```ts
 interface SubredditRecord {
@@ -88,27 +102,32 @@ interface SubredditRecord {
 
   meta?: {
     fetchedAt: number;
+    source: 'dom' | 'reddit_json';  // 'dom' is the only source today; see #10
     status: 'ok' | 'private' | 'banned' | 'quarantined' | 'not_found' | 'error';
     title?: string;
     publicDescription?: string;
     sidebar?: string;           // markdown "description", truncated to 4000 chars
     over18?: boolean;
+    quarantined?: boolean;
     lang?: string;              // Reddit's own field; often unreliable
     subscribers?: number;
+    weeklyActiveUsers?: number;
     subredditType?: string;     // public | restricted | private | ...
     createdUtc?: number;
   };
 
   samples?: {
     fetchedAt: number;
-    titles: string[];           // up to 25, original (untranslated) titles from JSON API
+    source: 'dom' | 'reddit_json';
+    titles: string[];           // up to 25, most recent first
+    items?: { id: string; title: string; lang?: string; seenAt: number }[]; // lang = Reddit's post-language tag
   };
 
   detectedLanguage?: {
     code: string;               // ISO 639-1, or "und"
     percentage: number;
     reliable: boolean;
-    source: 'browser.i18n';
+    source: 'reddit_post_language';
   };
 
   classification?: ClassificationResult;      // current
@@ -117,6 +136,9 @@ interface SubredditRecord {
   pipelineState: PipelineState;
   lastError?: { at: number; stage: string; message: string };
   attempts: number;
+  pendingAt?: number;           // set only while a reclassification is queued
+  pendingReclassify?: { requestedAt: number; profileId?: string; isFallback?: boolean };
+  retryAfter?: number;          // earliest retry after a transient error
 }
 
 type PipelineState =
@@ -137,12 +159,12 @@ interface ClassificationResult {
 type AttributeValue = boolean | string | string[];
 ```
 
-Indexes: `lastSeenAt`, `pipelineState`, `seenCount`.
-
-### Store `usage`
+### Table `usage`
 One row per LLM call: `{ id, at, profileId, model, inputTokens, outputTokens, ok: boolean }`. Used for cost display.
 
-### Settings (`browser.storage.local`)
+### Settings (SQLite)
+A key-value table holds each setting as JSON, along with the runtime status and the current block set. Code that needs to react to a change is notified directly when a setting is saved.
+
 - `attributes: AttributeDef[]` (§7.1)
 - `topics: string[]` (§7.2)
 - `profiles: ProviderProfile[]` (§6)
@@ -150,13 +172,22 @@ One row per LLM call: `{ id, at, profileId, model, inputTokens, outputTokens, ok
 - `filterLists: FilterList[]` (§8), `activeFilterListId`
 - `manualBlock: string[]`, `manualAllow: string[]`. Allow always wins over block.
 - `behavior`: §9 options
-- `queue`: `{ paused: boolean, redditMinIntervalMs: 2000 }`
+- `enrichment`: `{ minSamples, maxWaitHours }` (§5.2)
+- `queue`: `{ paused: boolean }`
 
-Full backup is a single JSON file containing settings, all subreddit records and usage, with a `schemaVersion` field. Import replaces everything or merges into existing data, the user's choice. **API keys are left out of exports by default**; a checkbox includes them.
+### Backups
+A nightly `VACUUM INTO` writes a copy of the database and keeps 7 copies. Restoring means putting one back as the database file. The database and its backups hold API keys unencrypted, so the owner must treat them as secrets.
+
+Data in a standalone extension is not migrated. The server starts empty.
+
+### Extension storage (`browser.storage.local`)
+- `blockSet`: the last block set received (§8), read by content scripts before paint
+- The outbox of unsent captures (§5.3)
+- The server URL and token
 
 ---
 
-## 5. Capture and enrichment pipeline
+## 5. Capture, server pipeline and API
 
 ### 5.1 Capture (content script)
 New Reddit is built from web components. **VERIFY** the selectors below against the live DOM before coding, and keep every selector in one module (`src/content/selectors.ts`) so it's easy to fix when Reddit changes its markup.
@@ -164,26 +195,48 @@ New Reddit is built from web components. **VERIFY** the selectors below against 
 - Posts appear as `<shreddit-post>` elements, with attributes including `subreddit-name`, `subreddit-prefixed-name` (`r/foo`), `subreddit-id`, `post-title`, `permalink`. (Last seen around 2025; **VERIFY**.)
 - Feeds scroll forever. Use one `MutationObserver` on `document.body` that handles added nodes, plus a first pass over existing posts. Reddit is a single-page app, so also re-scan when the URL changes. Detect that by polling `location.href` or listening for `popstate`, and **VERIFY** how navigation behaves.
 - Surfaces to cover: home, `/r/popular`, `/r/all`, search results, and subreddit pages (record the subreddit itself). Comment pages: record the post's subreddit only.
-- Send discoveries to the background in batches of up to 50 names, at most once a second, with the message `{ type: 'seen', names: [{ name, displayName }], url }`.
+- Send discoveries to the background in batches of up to 50 names, at most once a second, with the message `{ type: 'seen', names: [{ name, displayName, sighting, posts?, over18?, quarantined? }], url }`. `posts` are `{ id, title, lang? }`. The relay removes `url` (§5.3).
+- On a subreddit page, also send `{ type: 'subredditMeta', name, displayName, meta: { title?, publicDescription?, weeklyActiveUsers? } }` from the page header.
 - Ignore user-profile posts (`u_username` subreddits). Detect them by the `u_` prefix or the `u/` prefixed name.
 
 **Tool tip:** the user has the `firefox-devtools` MCP server set up in Claude Code (`@mozilla/firefox-devtools-mcp`). If it's available to you, use `navigate_page` + `take_snapshot` / `evaluate_script` to inspect the live new-Reddit DOM, and save a trimmed HTML fixture of a feed into `tests/fixtures/` for the extraction unit tests. That Firefox instance has its own profile and is not logged in to Reddit unless the user logs in there.
 
-### 5.2 Background pipeline
-A persistent queue driven by state, kept in IndexedDB so it survives the event page being unloaded. Wake it with `browser.alarms` (every 1 minute), and also immediately when new names arrive.
+### 5.2 Server pipeline
+A persistent queue driven by state, kept in SQLite so it survives restarts. A one-minute timer wakes it, and so does new data.
 
 For each subreddit, in priority order (higher `seenCount`, then more recent `lastSeenAt`), skipping when `queue.paused`:
 
-1. **discovered → meta_done**: `GET https://www.reddit.com/r/<name>/about.json` with `credentials: 'include'`. Map `data.over18`, `data.lang`, `data.public_description`, `data.description`, `data.title`, `data.subscribers`, `data.subreddit_type`, `data.created_utc`, `data.quarantine`. On 403 or 404, or a response with `reason` such as `private`/`banned`/`quarantined`, set `meta.status` and `pipelineState = 'skipped'`, except that quarantined subreddits continue if the data loads. **VERIFY** the response shapes for each case.
-2. **meta_done → samples_done**: `GET https://www.reddit.com/r/<name>/top.json?t=year&limit=25&raw_json=1`. If it returns fewer than 10 posts, also fetch `hot.json?limit=25`. Store `data.children[].data.title`. Use JSON titles, **not** DOM titles: new Reddit can show machine-translated titles, and translation would ruin language detection.
-3. **samples_done → language_done**: `browser.i18n.detectLanguage(text)` on the description plus titles. Store the top language, its percentage and `isReliable`. Run this in the background script; **VERIFY** the API is available there.
+1. **discovered → meta_done**: metadata comes from the DOM (subreddit header, search results) and is merged on ingest, so this stage only passes the record on.
+2. **meta_done → samples_done**: waits until `enrichment.minSamples` titles (default 3) have been seen, or one title plus a description, or at least one title `enrichment.maxWaitHours` (default 6) after first sight. A queued reclassification skips the wait.
+3. **samples_done → language_done**: Reddit's per-post `post-language` tags decide when at least 3 posts agree at 70% or more. Titles in the DOM can be machine-translated for logged-in users, so they are not used for language detection. If the tags don't settle it, the LLM is asked (§7.3).
 4. **language_done → classified | refused | failed**: LLM classification (§7).
 
-Rate limiting for reddit.com: one global token bucket, with at least `redditMinIntervalMs` (default 2000 ms) between requests. On HTTP 429, read the `x-ratelimit-reset` / `retry-after` headers if present (**VERIFY** the header names) and stop all Reddit requests until then. If neither header is present, back off exponentially, starting at 60 s with a 15-minute cap. Failures other than 429 increment `attempts`; after 3 attempts the record goes to `failed` with `lastError` set.
+The server never fetches from Reddit, so there is no reddit.com rate limiter. `about.json` and `top.json` are blocked for logged-out clients; see #10.
 
-If unauthenticated `.json` access stops working (Reddit has restricted it before), show a clear error in the popup. Don't hammer the endpoint.
+Each stage writes only the field it changed. A stage must not write back fields from the copy it read earlier, because a `seen` update may have arrived in between.
 
-**Re-classification:** a record is due again when (a) `rubricVersion` differs from the current version, (b) the classification is older than 180 days, or (c) the user asks for it (one subreddit, a selection, or all). Metadata and samples are refreshed when older than 90 days.
+Failures increment `attempts`; after 3 attempts the record goes to `failed` with `lastError` set.
+
+**Re-classification:** a record is due again when (a) `rubricVersion` differs from the current version, (b) the classification is older than 180 days, or (c) the user asks for it (one subreddit, a selection, or all). Metadata and samples update whenever the extension sends newer data.
+
+### 5.3 Extension relay
+- The background script forwards `seen` and `subredditMeta` to the server, without the page URL.
+- Unsent captures wait in a capped outbox in `storage.local`. When it is full, the oldest entries are dropped. The outbox is flushed on each upload and on the one-minute alarm.
+- The block set is fetched after each upload and on the alarm, using the ETag. It is written to `storage.local` only if its `updatedAt` is newer, so an out-of-order response cannot restore an older set.
+- While the server is unreachable, hiding continues from the cached set and captures wait in the outbox.
+- `pageStats` and the toolbar badge stay in the extension.
+
+### 5.4 Server API
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/seen` | The `seen` batch without `url`. Keeps the existing cap of 200 names |
+| `POST /api/meta` | Subreddit title, description and weekly active users |
+| `GET /api/blockset` | Current block set, with an ETag and `304` when unchanged |
+| `POST /api/rpc/:method` | The existing typed RPC methods, returning `{ ok, result }` or `{ ok, error }`, plus `getSettings`, `saveSettings` and a full reset |
+| `POST /login` | Exchanges the token for an `HttpOnly`, `SameSite=Strict`, `Secure` cookie for the server's pages |
+| `GET /healthz` | `200` if the server can open its database. No auth and no data |
+
+Every endpoint except `/healthz`, `/login` and the login page needs the bearer token, compared in constant time. `/api/rpc` also accepts the login cookie. All input is validated with zod under a body size limit, because the server receives scraped page data.
 
 ---
 
@@ -210,7 +263,7 @@ interface ProviderProfile {
 ```
 
 ### 6.2 Presets (options page "Add provider" menu)
-These pre-fill `kind` and `baseUrl`. The user supplies the model name. **VERIFY** each base URL against the provider's current docs.
+These pre-fill `kind` and `baseUrl`. The user supplies the model name. **VERIFY** each base URL against the provider's current docs. Base URLs are resolved from the server, so inside the container `localhost` means the container itself. A local LLM needs an address the container can reach.
 
 | Preset | kind | baseUrl |
 |---|---|---|
@@ -273,11 +326,11 @@ interface Connector {
 - Validate `json` with the zod schema. On failure, retry **once** with an extra user turn: "Your previous output was invalid: <zod error summary>. Return only valid JSON matching the schema." If it fails again → `failed`.
 - `refused` → state `refused`. If a `fallbackProfileId` is set and differs from the current profile, queue one retry on the fallback.
 - HTTP errors:
-  - 401/403 → pause the queue, show an error badge and a popup message naming the profile.
+  - 401/403 → pause the queue, show a popup message naming the profile.
   - 429 → respect `retry-after`, otherwise back off exponentially (30 s → 10 min).
   - 5xx or network error/timeout → retry up to 3 times with backoff.
-- Per-profile concurrency and RPM limits are enforced in the background.
-- Network errors against `localhost`: the message should mention the Ollama CORS setting. Ollama rejects extension origins unless started with `OLLAMA_ORIGINS=moz-extension://*` (**VERIFY** the current env var syntax).
+- Per-profile concurrency and RPM limits are enforced on the server.
+- Network errors against `localhost`: the message should say that the address is resolved from the server (§6.2). Calls come from the server, so browser CORS settings such as `OLLAMA_ORIGINS` no longer apply.
 - Never log API keys. Mask them in the UI (show the last 4 characters).
 
 ---
@@ -357,7 +410,7 @@ interface Condition {
 
 - Evaluate a subreddit using `overrides` first, then `classification`. If the needed attribute has no value, the condition is **false**. Unclassified subreddits are handled by the `hideUnclassified` behavior setting instead (§9).
 - The evaluator is a pure function in `src/filters/`, with thorough unit tests.
-- The **effective block set** for the active list = (subreddits matching the rule ∪ `manualBlock`) − `manualAllow`. The background keeps it in memory, recomputes it when data changes, and pushes it to content scripts (message `{ type: 'blockSet', names: string[], reasons: Record<string,string> }`).
+- The **effective block set** for the active list = (subreddits matching the rule ∪ `manualBlock`) − `manualAllow`. The server recomputes it when data changes and stores it with an `updatedAt` that changes only when its content does. The extension fetches it (§5.3) and caches it in `storage.local` as `{ type: 'blockSet', names, reasons, behavior, okNames?, updatedAt }`, where content scripts read it.
 - The review UI has a rule builder (nested groups, add/remove conditions, value pickers built from the attribute definitions) and a **live preview** of how many subreddits match, with a list of them.
 
 ---
@@ -369,6 +422,8 @@ Behavior settings:
 - `hideUnclassified`: default `false`.
 - `exemptOwnSubredditPage`: default `true`. Never hide posts on `/r/<name>` when the user browsed to that subreddit on purpose.
 - `enabled` master switch, also toggled from the popup.
+
+These are server settings, and they reach content scripts inside the block set. A change applies on every device after its next block set fetch, and the popup can't change them while the server is unreachable.
 
 How it works:
 - Hide by setting a `data-reddithide` attribute on the `shreddit-post` (or its nearest feed-item wrapper; **VERIFY** which element to hide so no gaps or empty cards remain), plus one injected stylesheet. Avoid touching each element's inline styles.
@@ -392,15 +447,17 @@ Full data backup and restore is covered in §4.
 ## 11. User interface
 
 ### Popup
+- Server URL and token fields, with server unreachable and bad token states.
 - Master on/off switch, active filter list selector, number of posts hidden on this page.
-- Queue status (discovered / waiting for metadata / waiting for LLM / classified / refused / failed), pause/resume, and any error banner (bad API key, Reddit rate limit, missing permission).
+- Queue status (discovered / waiting for metadata / waiting for LLM / classified / refused / failed), pause/resume, and any error banner (bad API key, missing permission).
 - On a subreddit page: that subreddit's labels, with **Reclassify**, **Always block** and **Always allow** buttons.
 
 ### Options page
+Served by the server, like the review and compare pages, behind a login page that takes the token.
 - **Providers**: list, add from preset, edit, Test, List models, set default/fallback, delete.
 - **Attributes & topics**: edit definitions (multiline), add/remove/disable attributes, edit the topic list. Show the current `rubricVersion`.
-- **Behavior**: §9 settings, Reddit request interval.
-- **Data**: export/import backup, "clear all data" (with confirmation).
+- **Behavior**: §9 settings.
+- **Data**: "clear all data" (with confirmation).
 
 ### Review page (full tab)
 - A table of all subreddits, virtualized for 10k+ rows, with columns: name (links to the subreddit), summary, each attribute (value plus a confidence hint), over18 flag, detected language, subscribers, seen count, last seen, state, model.
@@ -418,15 +475,20 @@ Full data backup and restore is covered in §4.
 
 ## 12. Privacy and security
 - Only public subreddit data (names, descriptions, titles) goes to LLM providers. Never send the user's identity, cookies, browsing history or URLs.
-- Requests to reddit.com use the user's own session, for reading only. Never send anything back to Reddit (no votes, joins or posts).
-- Data from Reddit and from LLMs is untrusted. Render it as text, never with `innerHTML`, and sanitize anything shown as a link.
-- API keys are stored unencrypted in `storage.local`. Say so in the options page and recommend keys with spending limits.
+- The extension sends the server subreddit names, post ids and titles, Reddit's language and NSFW flags, descriptions and visitor counts. It never sends cookies, account details or page URLs. What the server stores still reveals which subreddits the user sees, so it stays a private server.
+- The server never contacts Reddit, and nothing is ever sent back to Reddit (no votes, joins or posts). Its only outbound traffic goes to the LLM endpoints the user configures.
+- Single user, one token. The token is required, and the server refuses to start without one. It grants everything, including reading the API keys through `getSettings`. The extension never exposes it to page context.
+- Reach the server over a private network such as Tailscale, not the public internet. The login cookie is `Secure`, so the pages need HTTPS, which is set up outside this repo.
+- Data from Reddit and from LLMs is untrusted, on the server too. Validate it at the API, render it as text, never with `innerHTML`, and sanitize anything shown as a link. The server's pages send a strict CSP header, because they lose the extension CSP when they move.
+- API keys, and the backups that contain them, are stored unencrypted on the server. Say so on the options page and in the README, and recommend keys with spending limits.
 
 ---
 
 ## 13. Milestones and acceptance criteria
 
 Each milestone ends with `npm run build`, `npm test` and `web-ext lint` all passing.
+
+These milestones, and §14, were written for the standalone extension. Milestones 1–4 are built that way, and epic #25 moves them to the server. The server's nightly backups replace the backup half of milestone 5.
 
 1. **Scaffold + capture**: project setup, manifest, DB, content-script capture, a basic review table listing discovered subreddits with seen counts.
    *Accept:* scrolling `/r/popular` for a minute fills the table with subreddits whose counts go up. The extraction unit test passes against a saved fixture.

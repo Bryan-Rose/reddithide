@@ -4,6 +4,8 @@ RedditHide is a Firefox extension (Manifest V3, Firefox 128+) for new Reddit (`w
 
 Milestones 1–4 of SPEC §13 are built (capture, enrichment, providers and classification, filters and hiding). Milestones 5–6 (exports, backup/restore, compare page) are not. Open work is tracked in GitHub issues.
 
+**Moving to a server (epic #25).** RedditHide is becoming a small personal server plus a thin extension, and standalone mode is being dropped. `SPEC.md` describes that target. The code on `main` is still the self-contained extension described here until the cutover in #23, and each PR must leave `main` working. The server (Node 24.15+, `node:http`, `node:sqlite`, one Docker container, no new runtime dependencies) goes in `src/server/` and takes over the pipeline, filters, providers, settings, and the options and review pages. After the cutover `src/background/` is only a relay with an outbox, and `src/content/` is unchanged.
+
 Layout: `src/background/` (pipeline, IndexedDB, rate limiter, message router, block set), `src/content/` (DOM capture and hiding; selectors in `selectors.ts`), `src/providers/` (Anthropic and OpenAI-compatible connectors), `src/classify/` (prompt, schema, parsing, rubric version), `src/filters/` (rule evaluator), `src/ui/` (popup, options, review), `src/shared/`, `src/debug/` (debug bridge, debug builds only). Tests and DOM fixtures are in `tests/`.
 
 ## Commands
@@ -60,10 +62,14 @@ gh run view --log-failed                          # if a check fails: read the f
 ## Things that will bite you
 
 - **`web-ext lint` runs on `dist/`,** so `npm run lint` needs a fresh `npm run build`. It currently reports 5 warnings (not errors): two manifest keys unsupported at the minimum Firefox version, and `UNSAFE_VAR_ASSIGNMENT` in the popup, options and review bundles, which comes from Preact (`src/` never uses `innerHTML`). Don't add new ones.
-- **No `eval` or `new Function`.** The MV3 CSP blocks them, so no Ajv or similar; JSON Schema comes from zod's `z.toJSONSchema()` (SPEC §2).
-- **Only the background script touches IndexedDB.** Content scripts get updates through the published block set (`blockSet` in `browser.storage.local`); extension pages go through the background RPC.
-- **Reddit and LLM data are untrusted.** Render them as text, never with `innerHTML`, and sanitize anything shown as a link. Only public subreddit data goes to LLM providers; nothing is ever sent back to Reddit (SPEC §12).
+- **No `eval` or `new Function`.** The MV3 CSP blocks them, and the server's CSP will too, so no Ajv or similar; JSON Schema comes from zod's `z.toJSONSchema()` (SPEC §2).
+- **Only the background script touches IndexedDB, and only the server touches SQLite.** Content scripts get updates through the published block set (`blockSet` in `browser.storage.local`), on the server design too; pages go through RPC.
+- **No `await` between `BEGIN` and `COMMIT`.** The server has one SQLite connection, so an `await` lets another request run inside the transaction. The IndexedDB code awaits inside transactions, so don't copy that pattern when porting it.
+- **The server never contacts Reddit,** and it must never receive cookies, account details or page URLs. Strip `url` from `seen` before it leaves the extension (SPEC §12).
+- **The server token never reaches page context.** Every endpoint except `/healthz`, `/login` and the login page needs it, and all input is validated with zod under a body size limit. The server is single-user, for a private network, never the public internet.
+- **The container's `localhost` is not the host's.** LLM base URLs are resolved from the server (SPEC §6.2).
+- **Reddit and LLM data are untrusted.** Render them as text, never with `innerHTML`, and sanitize anything shown as a link. Pages served by the server need a strict CSP header. Only public subreddit data goes to LLM providers; nothing is ever sent back to Reddit (SPEC §12).
 - **Hiding must happen before paint.** The content script runs at `document_start` and marks posts in its MutationObserver callback; don't move hiding into anything asynchronous.
 - **Reddit's `about.json`/`top.json` are blocked for logged-out clients** (HTTP 403 as of 2026-10-16), so enrichment uses the DOM. See README "Reddit JSON enrichment is not active".
 - **Anthropic connector deviates from SPEC §6.4 on purpose:** structured outputs instead of a forced tool call, and no `temperature` on current models. See README "Anthropic details".
-- **Debug bridge builds** (`npm run build:debug`) relay page messages to the background RPC. Never ship or package one.
+- **Debug bridge builds** (`npm run build:debug`) relay page messages to the background RPC. Never ship or package one. #23 updates or removes the bridge.

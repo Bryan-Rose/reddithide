@@ -6,6 +6,8 @@ Firefox only (128+). You bring your own LLM: an API key for a hosted provider, o
 
 The full brief is in [SPEC.md](SPEC.md). This build covers milestones 1–4: capture, enrichment, providers and classification, filters and hiding. Milestones 5–6 (exports, backup/restore, compare page) are not built yet.
 
+**This is changing.** RedditHide is moving to a small personal server plus a thin extension, so data survives browser restarts and is shared between desktop and phone, with one API key and provider setup. The extension will keep capturing and hiding posts. The server will hold the data, classification, filters, settings, and the options and review pages. It will never contact Reddit, and you reach it over a private network such as Tailscale. The standalone extension goes away when that ships. [SPEC.md](SPEC.md) already describes the server design, and everything below describes the current build. Progress is in [issue #25](https://github.com/Bryan-Rose/reddithide/issues/25).
+
 ## Install (temporary, via about:debugging)
 
 ```sh
