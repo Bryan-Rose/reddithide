@@ -58,6 +58,11 @@ export function pingDb(): void {
   db().prepare('SELECT 1').get();
 }
 
+/** Not in `tx`: VACUUM can't run inside a transaction. */
+export function vacuumInto(path: string): void {
+  db().prepare('VACUUM INTO ?').run(path);
+}
+
 function parseRecord(row: unknown): SubredditRecord {
   return JSON.parse((row as { record: string }).record) as SubredditRecord;
 }
