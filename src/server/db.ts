@@ -1,5 +1,5 @@
 // SQLite access. One connection, and only the server touches it (SPEC §4). Every function is
-// synchronous, so nothing can run between BEGIN and COMMIT; never pass `tx` an async function.
+// synchronous, so nothing can run between BEGIN and COMMIT.
 import { DatabaseSync } from 'node:sqlite';
 import type { PipelineState, SubredditRecord, UsageRow } from '../shared/types';
 
@@ -40,7 +40,8 @@ function db(): DatabaseSync {
   return conn;
 }
 
-export function tx<T extends object | number | boolean | void>(fn: () => T): T {
+/** The type rejects async callbacks: an `await` would let another request into the transaction. */
+export function tx<T>(fn: (() => T) & (T extends PromiseLike<unknown> ? never : unknown)): T {
   db().exec('BEGIN IMMEDIATE');
   try {
     const result = fn();

@@ -170,6 +170,11 @@ function recordFailure(name: string, stage: string, message: string, now: number
 
 // ---- Classification job ----
 
+/** The user queued a reclassification after this job started, so that request must survive it. */
+function requeued(cur: SubredditRecord, job: SubredditRecord): boolean {
+  return cur.pendingReclassify?.requestedAt !== job.pendingReclassify?.requestedAt;
+}
+
 async function classifyJob(rec: SubredditRecord, profile: ProviderProfile): Promise<void> {
   const settings = getSettings();
   const rubricVersion = await getRubricVersion();
@@ -203,12 +208,12 @@ async function classifyJob(rec: SubredditRecord, profile: ProviderProfile): Prom
           ...cur,
           classification: outcome.result,
           classificationHistory: history,
-          pipelineState: 'classified',
           attempts: 0,
           lastError: undefined,
           retryAfter: undefined,
-          pendingAt: undefined,
-          pendingReclassify: undefined,
+          ...(requeued(cur, rec)
+            ? {}
+            : { pipelineState: 'classified', pendingAt: undefined, pendingReclassify: undefined }),
         };
       });
       scheduleBlockSet();
@@ -219,7 +224,7 @@ async function classifyJob(rec: SubredditRecord, profile: ProviderProfile): Prom
       const fallback = settings.fallbackProfileId;
       const useFallback = !!fallback && fallback !== profile.id && !rec.pendingReclassify?.isFallback;
       updateRecord(rec.name, (cur) => {
-        if (!cur) return undefined;
+        if (!cur || requeued(cur, rec)) return undefined;
         const lastError = {
           at: now,
           stage: 'classify',
@@ -245,21 +250,20 @@ async function classifyJob(rec: SubredditRecord, profile: ProviderProfile): Prom
       return;
     }
 
-    updateRecord(
-      rec.name,
-      (cur) =>
-        cur && {
-          ...cur,
-          pipelineState: 'failed',
-          lastError: {
-            at: now,
-            stage: 'classify',
-            message: `Invalid output from ${profile.name}: ${outcome.message}`,
-          },
-          pendingAt: undefined,
-          pendingReclassify: undefined,
+    updateRecord(rec.name, (cur) => {
+      if (!cur || requeued(cur, rec)) return undefined;
+      return {
+        ...cur,
+        pipelineState: 'failed',
+        lastError: {
+          at: now,
+          stage: 'classify',
+          message: `Invalid output from ${profile.name}: ${outcome.message}`,
         },
-    );
+        pendingAt: undefined,
+        pendingReclassify: undefined,
+      };
+    });
   } catch (e) {
     handleProviderError(rec, profile, e, now);
   }

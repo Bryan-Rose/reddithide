@@ -1,7 +1,7 @@
 // HTTP API and concurrency, against a real listening server and in-memory SQLite.
 import type { AddressInfo } from 'node:net';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getKv, getRecord, openDb, clearAll, clearKv } from '../src/server/db';
+import { getKv, getRecord, openDb, clearAll, clearKv, tx } from '../src/server/db';
 import { createApp } from '../src/server/http';
 import { pump } from '../src/server/pipeline';
 import { getSettings, saveSettings } from '../src/server/settings';
@@ -36,6 +36,12 @@ beforeEach(() => {
   clearAll();
   clearKv();
 });
+
+// Never called: `tsc` fails here if `tx` starts accepting async callbacks.
+export const _txRejectsAsync = () => {
+  // @ts-expect-error an await inside a transaction would let another request in
+  tx(async () => {});
+};
 
 describe('auth', () => {
   it('leaves only /healthz open', async () => {
@@ -194,7 +200,34 @@ describe('concurrency', () => {
       language_guess: { value: 'und', confidence: 0.1, reason: 'x' },
     };
     const realFetch = fetch;
+    const llmReply = () =>
+      new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(answer) } }] }), {
+        status: 200,
+      });
     afterEach(() => vi.unstubAllGlobals());
+
+    it('runs a reclassify requested while the subreddit is being classified', async () => {
+      const replies: ((r: Response) => void)[] = [];
+      const llm = vi.fn(() => new Promise<Response>((r) => replies.push(r)));
+      vi.stubGlobal('fetch', (url: string, init: RequestInit) =>
+        url.startsWith('http://llm.test') ? llm() : realFetch(url, init),
+      );
+      saveSettings({ profiles: [profile], defaultProfileId: 'p' });
+      const posts = [1, 2, 3].map((i) => ({ id: `${i}`, title: `T${i}` }));
+      await post('/api/seen', seen('cats', posts));
+      pump();
+      await vi.waitFor(() => expect(llm).toHaveBeenCalledTimes(1));
+
+      expect((await rpc('reclassify', { names: ['cats'] })).result).toEqual({ queued: 1 });
+      replies[0]!(llmReply());
+      await vi.waitFor(() => expect(llm).toHaveBeenCalledTimes(2));
+      expect(getRecord('cats')!.pendingReclassify).toBeDefined();
+
+      replies[1]!(llmReply());
+      await vi.waitFor(() => expect(getRecord('cats')!.pipelineState).toBe('classified'));
+      expect(getRecord('cats')!.pendingReclassify).toBeUndefined();
+      expect(getRecord('cats')!.classificationHistory).toHaveLength(1);
+    });
 
     it('keeps a seen update that arrives meanwhile, and uses language evidence', async () => {
       let finish = (_: Response) => {};
@@ -209,11 +242,7 @@ describe('concurrency', () => {
       await vi.waitFor(() => expect(llm).toHaveBeenCalled());
 
       await post('/api/seen', seen('cats', [{ id: '4', title: 'Late' }]));
-      finish(
-        new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(answer) } }] }), {
-          status: 200,
-        }),
-      );
+      finish(llmReply());
 
       await vi.waitFor(() => expect(getRecord('cats')!.pipelineState).toBe('classified'));
       const rec = getRecord('cats')!;
