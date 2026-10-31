@@ -38,7 +38,7 @@ beforeEach(() => {
 });
 
 // Never called: `tsc` fails here if `tx` starts accepting async callbacks.
-export const _txRejectsAsync = () => {
+const _txRejectsAsync = () => {
   // @ts-expect-error an await inside a transaction would let another request in
   tx(async () => {});
 };
@@ -227,6 +227,41 @@ describe('concurrency', () => {
       await vi.waitFor(() => expect(getRecord('cats')!.pipelineState).toBe('classified'));
       expect(getRecord('cats')!.pendingReclassify).toBeUndefined();
       expect(getRecord('cats')!.classificationHistory).toHaveLength(1);
+    });
+
+    const refusal = () =>
+      new Response(JSON.stringify({ choices: [{ message: { content: '', refusal: 'No.' } }] }), {
+        status: 200,
+      });
+    const badOutput = () =>
+      new Response(JSON.stringify({ choices: [{ message: { content: 'not json' } }] }), { status: 200 });
+
+    // Invalid output is retried once before the job gives up, so it takes two replies.
+    it.each([
+      ['a refusal', [refusal]],
+      ['invalid output', [badOutput, badOutput]],
+    ])('keeps a reclassify requested before %s', async (_, failures) => {
+      const replies: ((r: Response) => void)[] = [];
+      const llm = vi.fn(() => new Promise<Response>((r) => replies.push(r)));
+      vi.stubGlobal('fetch', (url: string, init: RequestInit) =>
+        url.startsWith('http://llm.test') ? llm() : realFetch(url, init),
+      );
+      saveSettings({ profiles: [profile], defaultProfileId: 'p' });
+      const posts = [1, 2, 3].map((i) => ({ id: `${i}`, title: `T${i}` }));
+      await post('/api/seen', seen('cats', posts));
+      pump();
+      await vi.waitFor(() => expect(llm).toHaveBeenCalledTimes(1));
+      await rpc('reclassify', { names: ['cats'] });
+
+      for (const [i, failure] of failures.entries()) {
+        await vi.waitFor(() => expect(llm).toHaveBeenCalledTimes(i + 1));
+        replies[i]!(failure());
+      }
+      await vi.waitFor(() => expect(llm).toHaveBeenCalledTimes(failures.length + 1));
+
+      replies[failures.length]!(llmReply());
+      await vi.waitFor(() => expect(getRecord('cats')!.pipelineState).toBe('classified'));
+      expect(getRecord('cats')!.pendingReclassify).toBeUndefined();
     });
 
     it('keeps a seen update that arrives meanwhile, and uses language evidence', async () => {
