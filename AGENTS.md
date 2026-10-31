@@ -65,7 +65,7 @@ gh run view --log-failed                          # if a check fails: read the f
 - **No `eval` or `new Function`.** The MV3 CSP blocks them, and the server's CSP will too, so no Ajv or similar; JSON Schema comes from zod's `z.toJSONSchema()` (SPEC §2).
 - **Only the background script touches IndexedDB, and only the server touches SQLite.** Content scripts get updates through the published block set (`blockSet` in `browser.storage.local`), on the server design too; pages go through RPC.
 - **No `await` between `BEGIN` and `COMMIT`.** The server has one SQLite connection, so an `await` lets another request run inside the transaction. The IndexedDB code awaits inside transactions, so don't copy that pattern when porting it.
-- **The server never contacts Reddit,** and it must never receive cookies, account details or page URLs. Strip `url` from `seen` before it leaves the extension (SPEC §12).
+- **The server never contacts Reddit,** and it must never receive cookies, account details or page URLs. Strip `url` from `seen` before it leaves the extension (SPEC §5.3).
 - **The server token never reaches page context.** Every endpoint except `/healthz`, `/login` and the login page needs it, and all input is validated with zod under a body size limit. The server is single-user, for a private network, never the public internet.
 - **The container's `localhost` is not the host's.** LLM base URLs are resolved from the server (SPEC §6.2).
 - **Reddit and LLM data are untrusted.** Render them as text, never with `innerHTML`, and sanitize anything shown as a link. Pages served by the server need a strict CSP header. Only public subreddit data goes to LLM providers; nothing is ever sent back to Reddit (SPEC §12).

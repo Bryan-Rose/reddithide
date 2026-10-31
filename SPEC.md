@@ -17,7 +17,7 @@ This document is the full brief. It assumes no prior context. Where it says **VE
 4. **Swappable LLM back ends**: Anthropic Claude, OpenAI, any OpenAI-compatible hosted provider (Kimi/Moonshot, DeepSeek, Groq, OpenRouter, Together, Mistral, …), and local models (Ollama, LM Studio, llama.cpp server, vLLM).
 5. **Filter**: the user builds rules over the attributes (e.g. `language != en OR gross = true OR topic in {crypto, sports}`). Posts from matching subreddits are hidden on new Reddit.
 6. **Export**: block lists as plain text, uBlock Origin cosmetic filters, and RES (Reddit Enhancement Suite) format. See §10 for why RES is secondary.
-7. **One copy across devices**: desktop and phone share the same data, provider setup and block set. Data survives browser restarts. Each subreddit is classified once.
+7. **One copy across devices**: desktop and phone share the same data, provider setup and block set. Data survives browser restarts. A subreddit is classified once per rubric version, and again only when it is due (§5.2).
 
 ### Non-goals (v1)
 - Chrome or Safari support. Keep browser-specific code isolated so a port stays possible, but don't test it.
@@ -221,8 +221,8 @@ Failures increment `attempts`; after 3 attempts the record goes to `failed` with
 
 ### 5.3 Extension relay
 - The background script forwards `seen` and `subredditMeta` to the server, without the page URL.
-- Unsent captures wait in a capped outbox in `storage.local`. When it is full, the oldest entries are dropped. The outbox is flushed on each upload and on the one-minute alarm.
-- The block set is fetched after each upload and on the alarm, using the ETag. It is written to `storage.local` only if its `updatedAt` is newer, so an out-of-order response cannot restore an older set.
+- Unsent captures wait in a capped outbox in `storage.local`. When it is full, the oldest entries are dropped. The outbox is flushed on each new capture and on the one-minute alarm.
+- The block set is fetched after each upload and on the alarm, using the ETag. It is written to `storage.local` only if its `updatedAt` is newer, so an out-of-order response cannot restore an older set. The server sets a fresh `updatedAt` on every start (§8), so a restored backup still reaches devices.
 - While the server is unreachable, hiding continues from the cached set and captures wait in the outbox.
 - `pageStats` and the toolbar badge stay in the extension.
 
@@ -236,7 +236,7 @@ Failures increment `attempts`; after 3 attempts the record goes to `failed` with
 | `POST /login` | Exchanges the token for an `HttpOnly`, `SameSite=Strict`, `Secure` cookie for the server's pages |
 | `GET /healthz` | `200` if the server can open its database. No auth and no data |
 
-Every endpoint except `/healthz`, `/login` and the login page needs the bearer token, compared in constant time. `/api/rpc` also accepts the login cookie. All input is validated with zod under a body size limit, because the server receives scraped page data.
+Every endpoint except `/healthz`, `/login` and the login page needs the bearer token, compared in constant time. `/api/rpc` also accepts the login cookie, and cookie-authenticated requests must have an `Origin` header matching the server. All input is validated with zod under a body size limit, because the server receives scraped page data.
 
 ---
 
@@ -263,7 +263,7 @@ interface ProviderProfile {
 ```
 
 ### 6.2 Presets (options page "Add provider" menu)
-These pre-fill `kind` and `baseUrl`. The user supplies the model name. **VERIFY** each base URL against the provider's current docs. Base URLs are resolved from the server, so inside the container `localhost` means the container itself. A local LLM needs an address the container can reach.
+These pre-fill `kind` and `baseUrl`. The user supplies the model name. **VERIFY** each base URL against the provider's current docs. Base URLs are resolved from the server, so inside the container `localhost` means the container itself. The local presets have a `<host>` placeholder, which the user replaces with an address the container can reach.
 
 | Preset | kind | baseUrl |
 |---|---|---|
@@ -273,8 +273,8 @@ These pre-fill `kind` and `baseUrl`. The user supplies the model name. **VERIFY*
 | Moonshot (Kimi) | openai-compatible | `https://api.moonshot.ai/v1` |
 | DeepSeek | openai-compatible | `https://api.deepseek.com/v1` |
 | Groq | openai-compatible | `https://api.groq.com/openai/v1` |
-| Ollama (local) | openai-compatible | `http://localhost:11434/v1` |
-| LM Studio (local) | openai-compatible | `http://localhost:1234/v1` |
+| Ollama (local) | openai-compatible | `http://<host>:11434/v1` (placeholder, must be edited) |
+| LM Studio (local) | openai-compatible | `http://<host>:1234/v1` (placeholder, must be edited) |
 | Custom | openai-compatible | (blank) |
 
 The options page has a **"List models"** button that calls `GET {baseUrl}/models` (OpenAI-compatible) or `GET https://api.anthropic.com/v1/models` (Anthropic) and fills a dropdown. It also has a **"Test"** button that classifies one hard-coded sample subreddit and shows the raw response, the parsed result and the latency.
@@ -410,7 +410,7 @@ interface Condition {
 
 - Evaluate a subreddit using `overrides` first, then `classification`. If the needed attribute has no value, the condition is **false**. Unclassified subreddits are handled by the `hideUnclassified` behavior setting instead (§9).
 - The evaluator is a pure function in `src/filters/`, with thorough unit tests.
-- The **effective block set** for the active list = (subreddits matching the rule ∪ `manualBlock`) − `manualAllow`. The server recomputes it when data changes and stores it with an `updatedAt` that changes only when its content does. The extension fetches it (§5.3) and caches it in `storage.local` as `{ type: 'blockSet', names, reasons, behavior, okNames?, updatedAt }`, where content scripts read it.
+- The **effective block set** for the active list = (subreddits matching the rule ∪ `manualBlock`) − `manualAllow`. The server recomputes it when data changes and stores it with an `updatedAt` that changes only when its content does, or when the server starts. Restoring a backup needs a restart, so the restored set always has a newer `updatedAt` than any device's cached set. The extension fetches it (§5.3) and caches it in `storage.local` as `{ type: 'blockSet', names, reasons, behavior, okNames?, updatedAt }`, where content scripts read it.
 - The review UI has a rule builder (nested groups, add/remove conditions, value pickers built from the attribute definitions) and a **live preview** of how many subreddits match, with a list of them.
 
 ---
@@ -477,7 +477,7 @@ Served by the server, like the review and compare pages, behind a login page tha
 - Only public subreddit data (names, descriptions, titles) goes to LLM providers. Never send the user's identity, cookies, browsing history or URLs.
 - The extension sends the server subreddit names, post ids and titles, Reddit's language and NSFW flags, descriptions and visitor counts. It never sends cookies, account details or page URLs. What the server stores still reveals which subreddits the user sees, so it stays a private server.
 - The server never contacts Reddit, and nothing is ever sent back to Reddit (no votes, joins or posts). Its only outbound traffic goes to the LLM endpoints the user configures.
-- Single user, one token. The token is required, and the server refuses to start without one. It grants everything, including reading the API keys through `getSettings`. The extension never exposes it to page context.
+- Single user, one token. The token is required, and the server refuses to start without one. It grants everything, including reading the API keys through `getSettings`. The extension never exposes it to page context: only the background script reads it, and content scripts read only `blockSet`.
 - Reach the server over a private network such as Tailscale, not the public internet. The login cookie is `Secure`, so the pages need HTTPS, which is set up outside this repo.
 - Data from Reddit and from LLMs is untrusted, on the server too. Validate it at the API, render it as text, never with `innerHTML`, and sanitize anything shown as a link. The server's pages send a strict CSP header, because they lose the extension CSP when they move.
 - API keys, and the backups that contain them, are stored unencrypted on the server. Say so on the options page and in the README, and recommend keys with spending limits.
