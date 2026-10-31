@@ -120,14 +120,19 @@ interface SubredditRecord {
     fetchedAt: number;
     source: 'dom' | 'reddit_json';
     titles: string[];           // up to 25, most recent first
-    items?: { id: string; title: string; lang?: string; seenAt: number }[]; // lang = Reddit's post-language tag
+    items?: {
+      id: string;
+      title: string;            // as shown, may be machine-translated
+      originalTitle?: string;   // original wording from the post's link, may be cut off (§5.1)
+      lang?: string;            // Reddit's post-language tag
+      browserLang?: string;     // Firefox's result on the original wording, when reliable (§5.3)
+      seenAt: number;
+    }[];
   };
 
-  detectedLanguage?: {
-    code: string;               // ISO 639-1, or "und"
-    percentage: number;
-    reliable: boolean;
-    source: 'reddit_post_language';
+  languageEvidence?: {          // per-subreddit summaries of samples.items, see §5.2
+    reddit?: { code: string; count: number; total: number };   // und tags not counted
+    firefox?: { code: string; count: number; total: number };
   };
 
   classification?: ClassificationResult;      // current
@@ -195,7 +200,8 @@ New Reddit is built from web components. **VERIFY** the selectors below against 
 - Posts appear as `<shreddit-post>` elements, with attributes including `subreddit-name`, `subreddit-prefixed-name` (`r/foo`), `subreddit-id`, `post-title`, `permalink`. (Last seen around 2025; **VERIFY**.)
 - Feeds scroll forever. Use one `MutationObserver` on `document.body` that handles added nodes, plus a first pass over existing posts. Reddit is a single-page app, so also re-scan when the URL changes. Detect that by polling `location.href` or listening for `popstate`, and **VERIFY** how navigation behaves.
 - Surfaces to cover: home, `/r/popular`, `/r/all`, search results, and subreddit pages (record the subreddit itself). Comment pages: record the post's subreddit only.
-- Send discoveries to the background in batches of up to 50 names, at most once a second, with the message `{ type: 'seen', names: [{ name, displayName, sighting, posts?, over18?, quarantined? }], url }`. `posts` are `{ id, title, lang? }`. The relay removes `url` (§5.3).
+- Send discoveries to the background in batches of up to 50 names, at most once a second, with the message `{ type: 'seen', names: [{ name, displayName, sighting, posts?, over18?, quarantined? }], url }`. `posts` are `{ id, title, lang?, originalTitle? }`. The relay removes `url` (§5.3).
+- `post-title` is translated when Reddit translates a post, but the link keeps the original wording: `/r/de/comments/1mlniax/reddit_verlangt_altersverifikation_in_deutschland/` for "Reddit requires age verification in Germany". `originalTitle` is that last path segment with underscores replaced by spaces. It is lowercase, without punctuation, and may be cut off. Leave it out when the segment is empty or `_`. Only these words are sent, never the link. Seen in the `?tl=en` view while logged out. **VERIFY** with a logged-in translated feed, and with titles in non-Latin scripts.
 - On a subreddit page, also send `{ type: 'subredditMeta', name, displayName, meta: { title?, publicDescription?, weeklyActiveUsers? } }` from the page header.
 - Ignore user-profile posts (`u_username` subreddits). Detect them by the `u_` prefix or the `u/` prefixed name.
 
@@ -208,10 +214,12 @@ For each subreddit, in priority order (higher `seenCount`, then more recent `las
 
 1. **discovered → meta_done**: metadata comes from the DOM (subreddit header, search results) and is merged on ingest, so this stage only passes the record on.
 2. **meta_done → samples_done**: waits until `enrichment.minSamples` titles (default 3) have been seen, or one title plus a description, or at least one title `enrichment.maxWaitHours` (default 6) after first sight. A queued reclassification skips the wait.
-3. **samples_done → language_done**: Reddit's per-post `post-language` tags decide when at least 3 posts agree at 70% or more. Titles in the DOM can be machine-translated for logged-in users, so they are not used for language detection. If the tags don't settle it, the LLM is asked (§7.3).
+3. **samples_done → language_done**: builds `languageEvidence` from the sample items: the most common Reddit tag and Firefox result, each with its count. Neither settles the language; the LLM decides (§7.3).
 4. **language_done → classified | refused | failed**: LLM classification (§7).
 
 The server never fetches from Reddit, so there is no reddit.com rate limiter. `about.json` and `top.json` are blocked for logged-out clients; see #10.
+
+Nothing sets `skipped` or a non-`ok` `meta.status` today, because the DOM doesn't reveal them. They stay reserved for #10.
 
 Each stage writes only the field it changed. A stage must not write back fields from the copy it read earlier, because a `seen` update may have arrived in between.
 
@@ -221,7 +229,8 @@ Failures increment `attempts`; after 3 attempts the record goes to `failed` with
 
 ### 5.3 Extension relay
 - The background script forwards `seen` and `subredditMeta` to the server, without the page URL.
-- Unsent captures wait in a capped outbox in `storage.local`. When it is full, the oldest entries are dropped. The outbox is flushed on each new capture and on the one-minute alarm.
+- Before queueing a post, it runs `browser.i18n.detectLanguage` on `originalTitle`, or on `title` if there is none, and adds the code as `browserLang` when the result is reliable. The server has no such API. **VERIFY** how reliable this is on short, cut-off text, and that it works on Firefox for Android.
+- Unsent captures wait in an outbox in `storage.local`, capped at 500 entries. When it is full, the oldest entries are dropped. The outbox is flushed on each new capture and on the one-minute alarm.
 - The block set is fetched after each upload and on the alarm, using the ETag. It is written to `storage.local` only if its `updatedAt` is newer, so an out-of-order response cannot restore an older set. The server sets a fresh `updatedAt` on every start (§8), so a restored backup still reaches devices.
 - While the server is unreachable, hiding continues from the cached set and captures wait in the outbox.
 - `pageStats` and the toolbar badge stay in the extension.
@@ -236,7 +245,7 @@ Failures increment `attempts`; after 3 attempts the record goes to `failed` with
 | `POST /login` | Exchanges the token for an `HttpOnly`, `SameSite=Strict`, `Secure` cookie for the server's pages |
 | `GET /healthz` | `200` if the server can open its database. No auth and no data |
 
-Every endpoint except `/healthz`, `/login` and the login page needs the bearer token, compared in constant time. `/api/rpc` also accepts the login cookie, and cookie-authenticated requests must have an `Origin` header equal to the server's public address. That address comes from the `PUBLIC_ORIGIN` environment variable (for example `https://reddithide.example.ts.net`). A missing or different `Origin` is rejected, and forwarded headers are not trusted. All input is validated with zod under a body size limit, because the server receives scraped page data.
+Every endpoint except `/healthz`, `/login` and the login page takes either the bearer token, compared in constant time, or the login cookie. This is one check in one place: the extension uses the token and browsers use the cookie. Cookie-authenticated requests must have an `Origin` header equal to the server's public address. That address comes from the `PUBLIC_ORIGIN` environment variable (for example `https://reddithide.example.ts.net`). A missing or different `Origin` is rejected, and forwarded headers are not trusted. All input is validated with zod under a body size limit, because the server receives scraped page data.
 
 ---
 
@@ -365,8 +374,10 @@ The user can add, edit, disable and reorder attributes. Example ideas for the UI
 `news, politics, gaming, sports, technology, programming, science, history, education, finance, crypto, business, careers, entertainment, movies_tv, music, books, anime_manga, art, photography, humor, memes, animals, nature, food, travel, cars, diy_crafts, home_garden, fashion_beauty, fitness, health_medical, relationships, parenting, lgbtq, religion, local_regional, support_advice, q_and_a, shopping_deals, adult, other`
 
 ### 7.3 Language
-1. If `detectedLanguage.reliable` and `percentage >= 70`, use its code.
-2. Otherwise, if the LLM was asked for a language guess (add a `language_guess` field to the schema only when step 1 failed), use that.
+Reddit's tags are often wrong or `und`, and titles can be machine-translated, so no single signal decides.
+
+1. The LLM always gives a `language_guess`, using the original title wording, the description and both `languageEvidence` summaries. Use its answer unless it is `und`.
+2. Otherwise use Firefox's most common result, then Reddit's, if at least 3 posts have that result and it covers at least 70% of `total`.
 3. Otherwise use `und`.
 
 Reddit's own `meta.lang` is only a last resort before `und`, because it is unreliable.
@@ -378,7 +389,7 @@ Reddit's `over18` flag covers gore as well as sexual content. That's why the LLM
 
 ### 7.5 Prompt and schema
 - **System prompt**: role ("You classify Reddit communities for a personal content filter. You only label; you never produce content."), then each enabled LLM attribute with its definition and allowed values, the output rules (JSON only, confidence 0–1, reason ≤ 20 words), and an instruction to use the post titles as the main evidence of what a community actually contains.
-- **User message**: name, title, public description, sidebar (truncated to 1500 chars), subscriber count, Reddit's over18 flag, and up to 25 titles (each truncated to 200 chars), as a labeled plain-text block. Treat all of this as untrusted data: put it inside clear delimiters and tell the model to ignore any instructions inside it.
+- **User message**: name, title, public description, sidebar (truncated to 1500 chars), subscriber count, Reddit's over18 flag, up to 25 titles (each truncated to 200 chars) with their `originalTitle` when it differs, and `languageEvidence`, as a labeled plain-text block. Treat all of this as untrusted data: put it inside clear delimiters and tell the model to ignore any instructions inside it.
 - **Output schema** (built dynamically from the enabled attributes):
   ```json
   { "summary": "string",
@@ -462,7 +473,7 @@ Served by the server, like the review and compare pages, behind a login page tha
 ### Review page (full tab)
 - A table of all subreddits, virtualized for 10k+ rows, with columns: name (links to the subreddit), summary, each attribute (value plus a confidence hint), over18 flag, detected language, subscribers, seen count, last seen, state, model.
 - Sorting, text search, and filtering by state or attribute.
-- Row detail drawer: all raw metadata, sample titles, per-attribute reasons, classification history, override controls, reclassify (choose a profile).
+- Row detail drawer: all raw metadata, sample titles, per-attribute reasons, the LLM, Firefox and Reddit language answers side by side, classification history, override controls, reclassify (choose a profile).
 - Bulk actions on the selection: reclassify, add to manual block/allow, delete.
 - Filter lists: create/rename/delete, rule builder, live preview, export (§10).
 - Cost panel: tokens per profile and estimated cost when prices are set.
@@ -475,9 +486,9 @@ Served by the server, like the review and compare pages, behind a login page tha
 
 ## 12. Privacy and security
 - Only public subreddit data (names, descriptions, titles) goes to LLM providers. Never send the user's identity, cookies, browsing history or URLs.
-- The extension sends the server subreddit names, post ids and titles, Reddit's language and NSFW flags, descriptions and visitor counts. It never sends cookies, account details or page URLs. What the server stores still reveals which subreddits the user sees, so it stays a private server.
+- The extension sends the server subreddit names, post ids, titles and the original title wording, Reddit's language and NSFW flags, Firefox's language result, descriptions and visitor counts. It never sends cookies, account details or page URLs. What the server stores still reveals which subreddits the user sees, so it stays a private server.
 - The server never contacts Reddit, and nothing is ever sent back to Reddit (no votes, joins or posts). Its only outbound traffic goes to the LLM endpoints the user configures.
-- Single user, one token. The token and `PUBLIC_ORIGIN` (§5.4) are required, and the server refuses to start without them. It grants everything, including reading the API keys through `getSettings`. The extension never exposes it to page context: only the background script reads it, and content scripts read only `blockSet`.
+- Single user, one token. The token, at least 32 characters long, and `PUBLIC_ORIGIN` (§5.4) are required, and the server refuses to start without them. It grants everything, including reading the API keys through `getSettings`. The extension never exposes it to page context: only the background script reads it, and content scripts read only `blockSet`.
 - Reach the server over a private network such as Tailscale, not the public internet. The login cookie is `Secure`, so the pages need HTTPS, which is set up outside this repo.
 - Data from Reddit and from LLMs is untrusted, on the server too. Validate it at the API, render it as text, never with `innerHTML`, and sanitize anything shown as a link. The server's pages send a strict CSP header, because they lose the extension CSP when they move.
 - API keys, and the backups that contain them, are stored unencrypted on the server. Say so on the options page and in the README, and recommend keys with spending limits.
