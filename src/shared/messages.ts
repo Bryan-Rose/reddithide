@@ -125,7 +125,10 @@ export type RpcResponse<M extends RpcMethod> =
   { ok: true; result: RpcMethods[M]['result'] } | { ok: false; error: string };
 
 /** `null` removes an optional setting, because JSON has no `undefined`. */
-export type SettingsPatch = { [K in keyof Settings]?: Settings[K] | null };
+export type SettingsPatch = Partial<Omit<Settings, 'defaultProfileId' | 'fallbackProfileId'>> & {
+  defaultProfileId?: string | null;
+  fallbackProfileId?: string | null;
+};
 
 /** The server's RPC: the permission check stays in the extension, and settings move here. */
 export type ServerRpcMethods = Omit<RpcMethods, 'checkRedditPermission'> & {
