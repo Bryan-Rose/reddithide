@@ -126,6 +126,24 @@ All selectors live in [`src/content/selectors.ts`](src/content/selectors.ts).
 - **Milestone 5:** exports (plain text, comma-separated, uBlock Origin, RES) and full backup/restore. The Data tab currently has "Clear subreddit data" and "Reset everything".
 - **Milestone 6:** compare page. The usage table and outdated-rubric re-run prompt already exist.
 
+## Server
+
+The server (`src/server/`) is being built for epic #25. The extension doesn't talk to it yet. It needs Node 24.15+.
+
+```bash
+npm run build
+SERVER_TOKEN=$(openssl rand -hex 32) npm run server
+```
+
+| Variable       | Default              | Purpose                                                                      |
+| -------------- | -------------------- | ---------------------------------------------------------------------------- |
+| `SERVER_TOKEN` | none, required       | Bearer token, at least 32 characters. The server refuses to start without it |
+| `DB_PATH`      | `data/reddithide.db` | SQLite database. Holds API keys unencrypted                                  |
+| `HOST`         | `127.0.0.1`          | Address to listen on                                                         |
+| `PORT`         | `8787`               | Port to listen on                                                            |
+
+SPEC §5.4 lists the endpoints. Every one except `GET /healthz` needs `Authorization: Bearer <token>`.
+
 ## Development
 
 - `tests/fixtures/*.html` are trimmed snapshots of the live DOM, used by the extraction tests.

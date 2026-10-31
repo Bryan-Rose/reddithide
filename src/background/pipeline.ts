@@ -3,12 +3,12 @@
 import { classifyRecord } from '../classify/classifier';
 import { ProviderError } from '../providers/types';
 import { HISTORY_LIMIT, MAX_ATTEMPTS, RECLASSIFY_AFTER_MS } from '../shared/constants';
-import { saveSettings } from '../shared/settings';
+import { saveSettings } from '../shared/settingsStore';
 import type { PipelineState, ProviderProfile, Settings, SubredditRecord } from '../shared/types';
 import { errorMessage } from '../shared/util';
 import { addUsage, getByState, updateMany, updateRecord } from './db';
 import { detectLanguage } from './language';
-import { Limiter } from './limiter';
+import { Limiter } from '../server/limiter';
 import { backoffUntil, reportError, setBackoff } from './runtime';
 import { getRubricVersion, getSettings } from './state';
 

@@ -6,18 +6,19 @@ Milestones 1–4 of SPEC §13 are built (capture, enrichment, providers and clas
 
 **Moving to a server (epic #25).** RedditHide is becoming a small personal server plus a thin extension, and standalone mode is being dropped. `SPEC.md` describes that target. The code on `main` is still the self-contained extension described here until the cutover in #23, and each PR must leave `main` working. The server (Node 24.15+, `node:http`, `node:sqlite`, one Docker container, no new runtime dependencies) goes in `src/server/` and takes over the pipeline, filters, providers, settings, and the options and review pages. After the cutover `src/background/` is only a relay with an outbox and Firefox language detection, and `src/content/` only gains original-title extraction (SPEC §5.1).
 
-Layout: `src/background/` (pipeline, IndexedDB, rate limiter, message router, block set), `src/content/` (DOM capture and hiding; selectors in `selectors.ts`), `src/providers/` (Anthropic and OpenAI-compatible connectors), `src/classify/` (prompt, schema, parsing, rubric version), `src/filters/` (rule evaluator), `src/ui/` (popup, options, review), `src/shared/`, `src/debug/` (debug bridge, debug builds only). Tests and DOM fixtures are in `tests/`.
+Layout: `src/background/` (pipeline, IndexedDB, message router, block set), `src/content/` (DOM capture and hiding; selectors in `selectors.ts`), `src/providers/` (Anthropic and OpenAI-compatible connectors), `src/classify/` (prompt, schema, parsing, rubric version), `src/filters/` (rule evaluator), `src/ui/` (popup, options, review), `src/shared/`, `src/debug/` (debug bridge, debug builds only), `src/server/` (HTTP API, SQLite, a rate limiter the extension also imports, and a port of `src/background/` that nothing else uses until #23). Tests and DOM fixtures are in `tests/`.
 
 ## Commands
 
 ```bash
 make check             # npm ci, prettier --check, typecheck, unit tests, build, then lint: everything CI runs
-npm run build          # production build into dist/ (load dist/manifest.json via about:debugging)
+npm run build          # production build: extension in dist/ (load dist/manifest.json via about:debugging), server in dist-server/
 npm run watch          # rebuild on change
 npm test               # Vitest
 npm run typecheck      # tsc --noEmit
 npm run lint           # ESLint on src/ and tests/, then web-ext lint on dist/ (build first)
 npm run start          # web-ext run with the built extension
+npm run server         # run the built server (README "Server")
 npm run build:debug    # build with the debug bridge (see README "Development")
 npm run package        # zip for distribution
 npm run format         # Prettier --write; make check fails on unformatted files
@@ -25,7 +26,7 @@ npm run format         # Prettier --write; make check fails on unformatted files
 
 ## Testing
 
-- Vitest with happy-dom and `fake-indexeddb`. Connector tests mock `fetch`; there are no live LLM or Reddit calls in tests.
+- Vitest with happy-dom, and in-memory SQLite for the server. Connector tests mock `fetch`; there are no live LLM or Reddit calls in tests.
 - Extraction tests run against `tests/fixtures/*.html`, trimmed snapshots of the live new-Reddit DOM. When Reddit's markup changes, refresh the fixture and `src/content/selectors.ts` together.
 - There are no browser end-to-end tests. Changes to capture or hiding need a manual check on the live site (README "Install"); say in the PR what you checked.
 

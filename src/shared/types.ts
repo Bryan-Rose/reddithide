@@ -36,6 +36,10 @@ export interface SampleItem {
   title: string;
   /** Reddit's `post-language` attribute when seen in the DOM. */
   lang?: string;
+  /** Original wording from the post's link; may be cut off (SPEC §5.1). */
+  originalTitle?: string;
+  /** Firefox's result on the original wording, when reliable (SPEC §5.3). */
+  browserLang?: string;
   seenAt: number;
 }
 
@@ -51,6 +55,18 @@ export interface DetectedLanguage {
   percentage: number;
   reliable: boolean;
   source: 'browser.i18n' | 'reddit_post_language';
+}
+
+export interface LanguageTally {
+  code: string;
+  count: number;
+  total: number;
+}
+
+/** Summaries of samples.items (SPEC §5.2). `und` is not counted. */
+export interface LanguageEvidence {
+  reddit?: LanguageTally;
+  firefox?: LanguageTally;
 }
 
 export interface AttributeResult {
@@ -88,7 +104,9 @@ export interface SubredditRecord {
 
   meta?: SubredditMeta;
   samples?: SubredditSamples;
+  /** Extension only; removed in #23. */
   detectedLanguage?: DetectedLanguage;
+  languageEvidence?: LanguageEvidence;
 
   classification?: ClassificationResult;
   classificationHistory?: ClassificationResult[]; // last 5

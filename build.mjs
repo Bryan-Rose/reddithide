@@ -6,6 +6,7 @@ const watch = process.argv.includes('--watch');
 // Debug builds add a postMessage bridge so automation can drive the extension from a reddit.com tab.
 const debugBridge = process.argv.includes('--debug-bridge');
 const outdir = 'dist';
+const serverOutdir = 'dist-server';
 
 const entryPoints = {
   background: 'src/background/index.ts',
@@ -17,6 +18,7 @@ const entryPoints = {
 };
 
 await rm(outdir, { recursive: true, force: true });
+await rm(serverOutdir, { recursive: true, force: true });
 await mkdir(outdir, { recursive: true });
 
 async function copyStatic() {
@@ -48,10 +50,21 @@ const options = {
   define: { __DEBUG_BRIDGE__: String(debugBridge) },
 };
 
+// Kept out of dist/: that folder is the extension package. Zod is bundled, so no node_modules at runtime.
+const serverOptions = {
+  entryPoints: { index: 'src/server/index.ts' },
+  outdir: serverOutdir,
+  bundle: true,
+  platform: 'node',
+  format: 'esm',
+  target: ['node24'],
+  sourcemap: watch ? 'inline' : false,
+  legalComments: 'none',
+  logLevel: 'info',
+};
+
 await copyStatic();
-if (watch) {
-  const ctx = await esbuild.context(options);
-  await ctx.watch();
-} else {
-  await esbuild.build(options);
+for (const o of [options, serverOptions]) {
+  if (watch) await (await esbuild.context(o)).watch();
+  else await esbuild.build(o);
 }

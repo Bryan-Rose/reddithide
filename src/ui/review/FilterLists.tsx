@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
-import { rpc } from '../../shared/messages';
+import { rpc } from '../../shared/rpc';
 import type { FilterList, RuleGroup, Settings } from '../../shared/types';
 import { uuid } from '../../shared/util';
 import { fieldDefs, RuleGroupEditor } from './RuleBuilder';

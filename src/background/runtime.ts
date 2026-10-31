@@ -1,6 +1,7 @@
 // Runtime status shown in the popup: errors, rate-limit backoff, reddit permission.
 import browser from '../shared/browser';
-import { defaultRuntimeStatus, loadRuntimeStatus, RUNTIME_KEY } from '../shared/settings';
+import { defaultRuntimeStatus, RUNTIME_KEY } from '../shared/settings';
+import { loadRuntimeStatus } from '../shared/settingsStore';
 import type { RuntimeError, RuntimeErrorKind, RuntimeStatus } from '../shared/types';
 
 let cache: RuntimeStatus | null = null;
