@@ -214,7 +214,7 @@ For each subreddit, in priority order (higher `seenCount`, then more recent `las
 
 1. **discovered → meta_done**: metadata comes from the DOM (subreddit header, search results) and is merged on ingest, so this stage only passes the record on.
 2. **meta_done → samples_done**: waits until `enrichment.minSamples` titles (default 3) have been seen, or one title plus a description, or at least one title `enrichment.maxWaitHours` (default 6) after first sight. A queued reclassification skips the wait.
-3. **samples_done → language_done**: builds `languageEvidence` from the sample items: the most common Reddit tag and Firefox result, each with its count. Neither settles the language; the LLM decides (§7.3).
+3. **samples_done → language_done**: builds `languageEvidence` from the sample items: the most common Reddit tag and Firefox result, each with its count. Neither decides the language on its own (§7.3).
 4. **language_done → classified | refused | failed**: LLM classification (§7).
 
 The server never fetches from Reddit, so there is no reddit.com rate limiter. `about.json` and `top.json` are blocked for logged-out clients; see #10.
@@ -245,7 +245,7 @@ Failures increment `attempts`; after 3 attempts the record goes to `failed` with
 | `POST /login` | Exchanges the token for an `HttpOnly`, `SameSite=Strict`, `Secure` cookie for the server's pages |
 | `GET /healthz` | `200` if the server can open its database. No auth and no data |
 
-Every endpoint except `/healthz`, `/login` and the login page takes either the bearer token, compared in constant time, or the login cookie. This is one check in one place: the extension uses the token and browsers use the cookie. Cookie-authenticated requests must have an `Origin` header equal to the server's public address. That address comes from the `PUBLIC_ORIGIN` environment variable (for example `https://reddithide.example.ts.net`). A missing or different `Origin` is rejected, and forwarded headers are not trusted. All input is validated with zod under a body size limit, because the server receives scraped page data.
+Every endpoint except `/healthz`, `/login` and the login page takes either the bearer token, compared in constant time, or the login cookie. This is one check in one place: the extension uses the token and browsers use the cookie. Cookie-authenticated requests other than GET and HEAD must have an `Origin` header equal to the server's public address. Browsers don't send `Origin` on page loads, and `SameSite=Strict` covers cross-site GETs. That address comes from the `PUBLIC_ORIGIN` environment variable (for example `https://reddithide.example.ts.net`). A missing or different `Origin` is rejected, and forwarded headers are not trusted. All input is validated with zod under a body size limit, because the server receives scraped page data.
 
 ---
 
@@ -376,11 +376,9 @@ The user can add, edit, disable and reorder attributes. Example ideas for the UI
 ### 7.3 Language
 Reddit's tags are often wrong or `und`, and titles can be machine-translated, so no single signal decides.
 
-1. The LLM always gives a `language_guess`, using the original title wording, the description and both `languageEvidence` summaries. Use its answer unless it is `und`.
-2. Otherwise use Firefox's most common result, then Reddit's, if at least 3 posts have that result and it covers at least 70% of `total`.
+1. The LLM decides, unless it answers `und`. It is always asked for a `language_guess` (§7.5), using the original title wording, the description and both `languageEvidence` summaries.
+2. If it answers `und`, use `languageEvidence.firefox`, then `languageEvidence.reddit`, if that summary's `count` is at least 3 and at least 70% of its `total`.
 3. Otherwise use `und`.
-
-Reddit's own `meta.lang` is only a last resort before `und`, because it is unreliable.
 
 ### 7.4 NSFW (sexual) combination rule
 Final `nsfw_sexual` = `meta.over18 === true && LLM says true`, OR LLM says true with confidence ≥ 0.8.
@@ -388,14 +386,15 @@ Final `nsfw_sexual` = `meta.over18 === true && LLM says true`, OR LLM says true 
 Reddit's `over18` flag covers gore as well as sexual content. That's why the LLM decides whether the content is *sexual*. Keep both raw inputs on the record and display them in the review table.
 
 ### 7.5 Prompt and schema
-- **System prompt**: role ("You classify Reddit communities for a personal content filter. You only label; you never produce content."), then each enabled LLM attribute with its definition and allowed values, the output rules (JSON only, confidence 0–1, reason ≤ 20 words), and an instruction to use the post titles as the main evidence of what a community actually contains.
+- **System prompt**: role ("You classify Reddit communities for a personal content filter. You only label; you never produce content."), then each enabled LLM attribute with its definition and allowed values, the `language_guess` rule when the `language` attribute is enabled, the output rules (JSON only, confidence 0–1, reason ≤ 20 words), and an instruction to use the post titles as the main evidence of what a community actually contains.
 - **User message**: name, title, public description, sidebar (truncated to 1500 chars), subscriber count, Reddit's over18 flag, up to 25 titles (each truncated to 200 chars) with their `originalTitle` when it differs, and `languageEvidence`, as a labeled plain-text block. Treat all of this as untrusted data: put it inside clear delimiters and tell the model to ignore any instructions inside it.
 - **Output schema** (built dynamically from the enabled attributes):
   ```json
   { "summary": "string",
-    "attributes": { "<id>": { "value": <bool|string|string[]>, "confidence": 0.0, "reason": "string" } } }
+    "attributes": { "<id>": { "value": <bool|string|string[]>, "confidence": 0.0, "reason": "string" } },
+    "language_guess": { "value": "string", "confidence": 0.0, "reason": "string" } }
   ```
-  Validate enum values against the configured options. Unknown topic values map to `other`, and the mapping is logged.
+  `language_guess` is an ISO 639-1 code, `mixed` or `und`, and is requested whenever the `language` attribute is enabled. Validate enum values against the configured options. Unknown topic values map to `other`, and the mapping is logged.
 - **rubricVersion** = short hash (SHA-256 via `crypto.subtle`, first 12 hex chars) of the system prompt template plus the enabled attribute definitions plus the topic list. Any edit changes it, and the review page then offers "N subreddits classified with an older rubric — re-run?" Never re-run automatically, because it costs money.
 
 One subreddit per LLM request in v1. Batching several subreddits per request is a possible later optimization; don't build it now.
@@ -488,7 +487,7 @@ Served by the server, like the review and compare pages, behind a login page tha
 - Only public subreddit data (names, descriptions, titles) goes to LLM providers. Never send the user's identity, cookies, browsing history or URLs.
 - The extension sends the server subreddit names, post ids, titles and the original title wording, Reddit's language and NSFW flags, Firefox's language result, descriptions and visitor counts. It never sends cookies, account details or page URLs. What the server stores still reveals which subreddits the user sees, so it stays a private server.
 - The server never contacts Reddit, and nothing is ever sent back to Reddit (no votes, joins or posts). Its only outbound traffic goes to the LLM endpoints the user configures.
-- Single user, one token. The token, at least 32 characters long, and `PUBLIC_ORIGIN` (§5.4) are required, and the server refuses to start without them. It grants everything, including reading the API keys through `getSettings`. The extension never exposes it to page context: only the background script reads it, and content scripts read only `blockSet`.
+- Single user, one token. The token, at least 32 characters long, and `PUBLIC_ORIGIN` (§5.4) are required, and the server refuses to start without them. It grants everything, including reading the API keys through `getSettings`. The extension never exposes it to page context. It stays in `storage.local` because `storage.session` is cleared on browser restart. Content scripts can technically read that area, so reading only `blockSet` there is a code rule, and only the background script reads the token.
 - Reach the server over a private network such as Tailscale, not the public internet. The login cookie is `Secure`, so the pages need HTTPS, which is set up outside this repo.
 - Data from Reddit and from LLMs is untrusted, on the server too. Validate it at the API, render it as text, never with `innerHTML`, and sanitize anything shown as a link. The server's pages send a strict CSP header, because they lose the extension CSP when they move.
 - API keys, and the backups that contain them, are stored unencrypted on the server. Say so on the options page and in the README, and recommend keys with spending limits.
