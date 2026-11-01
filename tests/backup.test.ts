@@ -12,6 +12,20 @@ import { getRuntime } from '../src/server/runtime';
 import { BLOCKSET_KEY } from '../src/shared/settings';
 import type { BlockSet } from '../src/shared/types';
 
+const vacuum = vi.hoisted(() => ({ failNext: false }));
+vi.mock('../src/server/db', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/server/db')>();
+  return {
+    ...actual,
+    vacuumInto: (path: string) => {
+      if (!vacuum.failNext) return actual.vacuumInto(path);
+      vacuum.failNext = false;
+      writeFileSync(path, 'partial');
+      throw new Error('disk full');
+    },
+  };
+});
+
 const TOKEN = 'x'.repeat(32);
 const ORIGIN = 'https://reddithide.example.ts.net';
 const day = (d: number) => new Date(Date.UTC(2026, 9, d, 3));
@@ -69,6 +83,15 @@ describe('runBackup', () => {
     writeFileSync(join(backups, 'reddithide-2026-10-02.db.tmp'), 'partial');
     runBackup(backups, day(2));
     expect(readdirSync(backups).sort()).toEqual(['reddithide-2026-10-01.db', 'reddithide-2026-10-02.db']);
+  });
+
+  it('removes the partial copy when a backup fails', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vacuum.failNext = true;
+    runBackup(backups, day(1));
+    expect(readdirSync(backups)).toEqual([]);
+    expect(getRuntime().errors.map((e) => e.kind)).toEqual(['backup']);
+    error.mockRestore();
   });
 
   it('reports a failure and clears it after the next success', () => {

@@ -151,13 +151,16 @@ The image serves plain HTTP on port 8787 and keeps everything in the `/data` vol
 
 ```bash
 docker build -t reddithide .
+(umask 077; echo "SERVER_TOKEN=$(openssl rand -hex 32)" > reddithide.env)
+echo "PUBLIC_ORIGIN=https://reddithide.example.ts.net" >> reddithide.env
 docker run -d --name reddithide --restart unless-stopped \
   -p 127.0.0.1:8787:8787 \
   -v reddithide-data:/data \
-  -e SERVER_TOKEN=<at least 32 characters> \
-  -e PUBLIC_ORIGIN=https://reddithide.example.ts.net \
+  --env-file reddithide.env \
   reddithide
 ```
+
+Keep `reddithide.env` out of version control. The token is the password for the server.
 
 To update, rebuild the image, remove the container and run it again with the same volume. The data stays. If you mount a host folder on `/data` instead of a named volume, it must be writable by UID 1000.
 

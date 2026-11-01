@@ -1,6 +1,7 @@
 // Server entry point. Configured by SERVER_TOKEN, PUBLIC_ORIGIN, and optionally DB_PATH, HOST and PORT.
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { errorMessage } from '../shared/util';
 import { runBackup } from './backup';
 import { publishBlockSet } from './blockset';
 import { readConfig } from './config';
@@ -11,7 +12,13 @@ import { tick } from './pipeline';
 const TICK_MS = 60_000;
 const BACKUP_CHECK_MS = 60 * 60_000;
 
-const { token } = readConfig(process.env);
+let token: string;
+try {
+  ({ token } = readConfig(process.env));
+} catch (e) {
+  console.error(errorMessage(e));
+  process.exit(1);
+}
 
 const dbPath = process.env.DB_PATH ?? 'data/reddithide.db';
 const backupDir = join(dirname(dbPath), 'backups');
