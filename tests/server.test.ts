@@ -4,11 +4,11 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getKv, getRecord, openDb, clearAll, clearKv, tx } from '../src/server/db';
+import { getKv, getRecord, openDb, clearAll, clearKv, tx, updateRecord } from '../src/server/db';
 import { createApp } from '../src/server/http';
 import { toRow } from '../src/server/router';
 import { pump } from '../src/server/pipeline';
-import { getSettings, saveSettings } from '../src/server/settings';
+import { getRubricVersion, getSettings, saveSettings } from '../src/server/settings';
 import type { ProviderProfile, SubredditRecord } from '../src/shared/types';
 import { toSettingsPatch } from '../src/ui/common/backend.server';
 
@@ -143,6 +143,28 @@ describe('page data', () => {
     expect(after.revision).not.toBe(before.revision);
     expect(after.counts).toMatchObject({ discovered: 1, outdatedRubric: 0, total: 1 });
     expect((await rpc('getStatus')).result.revision).toBe(after.revision);
+  });
+  it('counts only records classified with another rubric as outdated', async () => {
+    const rubricVersion = await getRubricVersion();
+    const classified = (name: string, version: string) =>
+      updateRecord(
+        name,
+        () =>
+          ({
+            name,
+            pipelineState: 'classified',
+            classification: { rubricVersion: version },
+          }) as unknown as SubredditRecord,
+      );
+    classified('current', rubricVersion);
+    classified('stale', 'old');
+    classified('stale2', 'older');
+    await post('/api/seen', seen('cats'));
+    expect((await rpc('getStatus')).result.counts).toMatchObject({
+      classified: 3,
+      outdatedRubric: 2,
+      total: 4,
+    });
   });
   it('leaves reasons out of table rows', () => {
     const rec = {

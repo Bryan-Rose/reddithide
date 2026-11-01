@@ -1,4 +1,4 @@
-// HTTP API and pages (SPEC §5.4). Everything except /healthz and the login page goes through one auth check.
+// HTTP API and pages (SPEC §5.4). Everything except /healthz, the login page and its stylesheet goes through one auth check.
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';

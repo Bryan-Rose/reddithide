@@ -53,7 +53,6 @@ export function tx<T>(fn: (() => T) & (T extends PromiseLike<unknown> ? never : 
   }
 }
 
-/** Throws if the database can't answer (GET /healthz). */
 const STARTED_AT = Date.now();
 
 /** Changes with every write, including settings and usage, so it can only cause an extra refresh. */
@@ -62,6 +61,7 @@ export function getRevision(): string {
   return `${STARTED_AT}-${row.n}`;
 }
 
+/** Throws if the database can't answer (GET /healthz). */
 export function pingDb(): void {
   db().prepare('SELECT 1').get();
 }

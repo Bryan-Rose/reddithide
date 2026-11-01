@@ -15,8 +15,11 @@ export async function rpc<M extends ServerRpcMethod>(
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(args[0]),
   });
-  // Reloading shows the login page.
-  if (res.status === 401) location.reload();
+  if (res.status === 401) {
+    // Reloading shows the login page.
+    location.reload();
+    throw new Error('Not logged in');
+  }
   const body = (await res.json()) as { ok: boolean; result: ServerRpcMethods[M]['result']; error?: string };
   if (!body.ok) throw new Error(body.error);
   if (SETTINGS_WRITES.includes(method)) settingsEvents.dispatchEvent(new Event('change'));
