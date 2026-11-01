@@ -65,7 +65,9 @@ describe('runBackup', () => {
   it('gives a restored block set a newer updatedAt on start', () => {
     const backedUp = publishBlockSet();
     runBackup(backups, day(31));
-    openDb(join(backups, 'reddithide-2026-10-31.db'));
+    const restored = join(dir, 'restored.db');
+    copyFileSync(join(backups, 'reddithide-2026-10-31.db'), restored);
+    openDb(restored);
     expect(publishBlockSet(true).updatedAt).toBeGreaterThan(backedUp.updatedAt);
     expect(getKv<BlockSet>(BLOCKSET_KEY)?.updatedAt).toBeGreaterThan(backedUp.updatedAt);
   });

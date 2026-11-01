@@ -123,7 +123,7 @@ All selectors live in [`src/content/selectors.ts`](src/content/selectors.ts).
 
 ## Not built yet
 
-- **Milestone 5:** exports (plain text, comma-separated, uBlock Origin, RES) and full backup/restore. The Data tab currently has "Clear subreddit data" and "Reset everything".
+- **Milestone 5:** exports (plain text, comma-separated, uBlock Origin, RES). Backups moved to the server (see [Backups](#backups)), which the extension doesn't use yet. The Data tab currently has "Clear subreddit data" and "Reset everything".
 - **Milestone 6:** compare page. The usage table and outdated-rubric re-run prompt already exist.
 
 ## Server
@@ -160,7 +160,7 @@ docker run -d --name reddithide --restart unless-stopped \
   reddithide
 ```
 
-Keep `reddithide.env` out of version control. The token is the password for the server.
+The token is the password for the server, so keep this file private. Git and Docker ignore `*.env` in this repo.
 
 To update, rebuild the image, remove the container and run it again with the same volume. The data stays. If you mount a host folder on `/data` instead of a named volume, it must be writable by UID 1000.
 
