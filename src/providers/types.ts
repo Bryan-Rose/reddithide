@@ -1,5 +1,5 @@
 // Connector interface (SPEC §6.3) and the shared HTTP/error plumbing both connectors use.
-import { isLocalUrl } from '../shared/constants';
+import { isLocalUrl, LOCAL_ADDRESS_HINT } from '../shared/constants';
 import type { ProviderProfile } from '../shared/types';
 
 export interface ClassifyRequest {
@@ -87,7 +87,7 @@ export async function providerFetch(
       `Network error contacting ${new URL(url).host}: ${e instanceof Error ? e.message : String(e)}`,
       undefined,
       undefined,
-      local ? OLLAMA_CORS_HINT : undefined,
+      local ? (__SERVER_BUILD__ ? LOCAL_ADDRESS_HINT : OLLAMA_CORS_HINT) : undefined,
     );
   }
   if (res.ok) return res;
@@ -97,7 +97,7 @@ export async function providerFetch(
   const summary = `HTTP ${res.status} from ${profile.name}: ${body.slice(0, 300) || res.statusText}`;
   if (res.status === 401 || res.status === 403) {
     // Ollama answers 403 for disallowed Origins, which is a CORS setting, not a bad key.
-    const hint = isLocalUrl(profile.baseUrl) ? OLLAMA_CORS_HINT : undefined;
+    const hint = !__SERVER_BUILD__ && isLocalUrl(profile.baseUrl) ? OLLAMA_CORS_HINT : undefined;
     throw new ProviderError('auth', summary, res.status, undefined, hint);
   }
   if (res.status === 429) throw new ProviderError('rate_limit', summary, 429, retryAfterMs);

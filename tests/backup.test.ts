@@ -112,8 +112,16 @@ describe('runBackup', () => {
 });
 
 describe('readConfig', () => {
+  it('refuses plain HTTP except on localhost', () => {
+    expect(() => readConfig({ SERVER_TOKEN: TOKEN, PUBLIC_ORIGIN: 'http://100.64.0.1:8787' })).toThrow(
+      'https',
+    );
+  });
   it('accepts a long token and an origin', () => {
-    expect(readConfig({ SERVER_TOKEN: TOKEN, PUBLIC_ORIGIN: ORIGIN })).toEqual({ token: TOKEN });
+    expect(readConfig({ SERVER_TOKEN: TOKEN, PUBLIC_ORIGIN: ORIGIN })).toEqual({
+      token: TOKEN,
+      origin: ORIGIN,
+    });
     expect(readConfig({ SERVER_TOKEN: TOKEN, PUBLIC_ORIGIN: 'http://localhost:8787' })).toBeTruthy();
   });
 

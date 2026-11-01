@@ -1,14 +1,23 @@
 // HTTP API and concurrency, against a real listening server and in-memory SQLite.
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getKv, getRecord, openDb, clearAll, clearKv, tx } from '../src/server/db';
 import { createApp } from '../src/server/http';
+import { toRow } from '../src/server/router';
 import { pump } from '../src/server/pipeline';
 import { getSettings, saveSettings } from '../src/server/settings';
-import type { ProviderProfile } from '../src/shared/types';
+import type { ProviderProfile, SubredditRecord } from '../src/shared/types';
+import { toSettingsPatch } from '../src/ui/common/backend.server';
 
 const TOKEN = 'x'.repeat(32);
-const server = createApp(TOKEN);
+const ORIGIN = 'https://reddithide.example.ts.net';
+const publicDir = mkdtempSync(join(tmpdir(), 'reddithide-public-'));
+for (const f of ['review.html', 'review.js', 'login.css']) writeFileSync(join(publicDir, f), f);
+writeFileSync(join(publicDir, 'login.html'), 'login form <!-- error -->');
+const server = createApp({ token: TOKEN, origin: ORIGIN, publicDir });
 let base = '';
 
 const request = (path: string, init: RequestInit = {}, token = TOKEN) =>
@@ -57,6 +66,97 @@ describe('auth', () => {
   });
   it('answers 404 for an unknown path once authorized', async () => {
     expect((await request('/nope')).status).toBe(404);
+  });
+});
+
+describe('login and pages', () => {
+  const login = (token: string) =>
+    fetch(`${base}/login`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ token }),
+    });
+  const cookie = async () => (await login(TOKEN)).headers.get('set-cookie')!.split(';')[0]!;
+  const rpcWithCookie = async (headers: Record<string, string>) =>
+    fetch(`${base}/api/rpc/getStatus`, { method: 'POST', headers: { cookie: await cookie(), ...headers } });
+
+  it('sets a locked-down cookie that is not the token', async () => {
+    const res = await login(` ${TOKEN}\n`);
+    expect(res.status).toBe(303);
+    expect(res.headers.get('location')).toBe('/');
+    const set = res.headers.get('set-cookie')!;
+    expect(set).toMatch(/HttpOnly/);
+    expect(set).toMatch(/SameSite=Strict/);
+    expect(set).toMatch(/Secure/);
+    expect(set).not.toContain(TOKEN);
+  });
+  it('rejects a wrong token with the login page', async () => {
+    const res = await login('y'.repeat(32));
+    expect(res.status).toBe(401);
+    expect(res.headers.has('set-cookie')).toBe(false);
+    expect(await res.text()).toContain('not right');
+  });
+  it('rejects a made-up cookie', async () => {
+    const res = await fetch(`${base}/review.js`, { headers: { cookie: `reddithide_login=${TOKEN}` } });
+    expect(res.status).toBe(401);
+  });
+  it('answers page loads without a login with 401 and the login page', async () => {
+    for (const path of ['/', '/review.html']) {
+      const res = await fetch(base + path);
+      expect(res.status).toBe(401);
+      expect(await res.text()).toContain('login form');
+    }
+    expect((await fetch(`${base}/review.js`)).status).toBe(401);
+    expect(await (await fetch(`${base}/login.css`)).text()).toBe('login.css');
+  });
+  it('serves listed files, with the CSP, to the cookie or the token', async () => {
+    const res = await fetch(base, { headers: { cookie: await cookie() } });
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toContain('text/html');
+    expect(res.headers.get('content-security-policy')).toContain("script-src 'self'");
+    expect(await res.text()).toBe('review.html');
+    expect(await (await request('/review.js')).text()).toBe('review.js');
+    expect((await fetch(`${base}/healthz`)).headers.has('content-security-policy')).toBe(true);
+  });
+  it('never serves anything else from the folder', async () => {
+    for (const path of ['/login.html', '/../http.ts', '/%2e%2e/http.ts', '/constructor']) {
+      expect((await request(path)).status).toBe(404);
+    }
+  });
+  it('requires Origin to match on cookie writes only', async () => {
+    expect((await rpcWithCookie({ origin: ORIGIN })).status).toBe(200);
+    expect((await rpcWithCookie({})).status).toBe(403);
+    expect((await rpcWithCookie({ origin: 'https://evil.example' })).status).toBe(403);
+    expect((await rpcWithCookie({ origin: 'https://evil.example', 'x-forwarded-host': ORIGIN })).status).toBe(
+      403,
+    );
+    expect((await post('/api/rpc/getStatus')).status).toBe(200);
+  });
+});
+
+describe('page data', () => {
+  it('counts states and outdated rubrics in SQL, and the revision follows writes', async () => {
+    const before = (await rpc('getStatus')).result;
+    await post('/api/seen', seen('cats'));
+    const after = (await rpc('getStatus')).result;
+    expect(after.revision).not.toBe(before.revision);
+    expect(after.counts).toMatchObject({ discovered: 1, outdatedRubric: 0, total: 1 });
+    expect((await rpc('getStatus')).result.revision).toBe(after.revision);
+  });
+  it('leaves reasons out of table rows', () => {
+    const rec = {
+      name: 'cats',
+      classification: { summary: 's', values: { gross: { value: true, confidence: 0.9, reason: 'long' } } },
+    } as unknown as SubredditRecord;
+    expect(toRow(rec).values).toEqual({ gross: { value: true, confidence: 0.9 } });
+  });
+  it('sends a removed setting as null, so it survives JSON and is deleted', async () => {
+    saveSettings({ defaultProfileId: 'a' });
+    const patch = toSettingsPatch({ defaultProfileId: undefined, topics: ['x'] });
+    expect((await rpc('saveSettings', patch)).ok).toBe(true);
+    expect(getSettings().defaultProfileId).toBeUndefined();
+    expect(getSettings().topics).toEqual(['x']);
   });
 });
 

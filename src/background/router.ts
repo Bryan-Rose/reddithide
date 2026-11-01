@@ -116,6 +116,7 @@ const handlers: Handlers = {
     ]);
     return {
       counts: countStates(records, rubricVersion),
+      revision: String(Date.now()),
       runtime,
       rubricVersion,
       paused: settings.queue.paused,

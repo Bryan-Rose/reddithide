@@ -54,6 +54,14 @@ export function tx<T>(fn: (() => T) & (T extends PromiseLike<unknown> ? never : 
 }
 
 /** Throws if the database can't answer (GET /healthz). */
+const STARTED_AT = Date.now();
+
+/** Changes with every write, including settings and usage, so it can only cause an extra refresh. */
+export function getRevision(): string {
+  const row = db().prepare('SELECT total_changes() AS n').get() as { n: number };
+  return `${STARTED_AT}-${row.n}`;
+}
+
 export function pingDb(): void {
   db().prepare('SELECT 1').get();
 }
@@ -74,6 +82,17 @@ export function getRecord(name: string): SubredditRecord | undefined {
 
 export function getAllRecords(): SubredditRecord[] {
   return db().prepare('SELECT record FROM subreddits').all().map(parseRecord);
+}
+
+/** Reads no record into JS, so the pages can poll it at any size. */
+export function countByState(rubric: string): { state: PipelineState; n: number; outdated: number }[] {
+  return db()
+    .prepare(
+      `SELECT pipeline_state AS state, COUNT(*) AS n,
+         SUM(json_extract(record, '$.classification.rubricVersion') IS NOT ?) AS outdated
+       FROM subreddits GROUP BY pipeline_state`,
+    )
+    .all(rubric) as { state: PipelineState; n: number; outdated: number }[];
 }
 
 export function getByState(state: PipelineState): SubredditRecord[] {

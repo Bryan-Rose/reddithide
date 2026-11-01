@@ -1,6 +1,8 @@
-// HTTP API (SPEC §5.4). Every endpoint except /healthz goes through one auth check.
-import { createHash, timingSafeEqual } from 'node:crypto';
+// HTTP API and pages (SPEC §5.4). Everything except /healthz and the login page goes through one auth check.
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import { extname, join } from 'node:path';
 import { z } from 'zod';
 import { summarizeZodError } from '../classify/schema';
 import type { ServerRpcMethod } from '../shared/messages';
@@ -14,6 +16,38 @@ import { metaSchema, rpcParams, seenSchema } from './schemas';
 
 const MAX_BODY_BYTES = 1024 * 1024;
 const RPC_PREFIX = '/api/rpc/';
+const COOKIE = 'reddithide_login';
+const COOKIE_MAX_AGE_S = 365 * 24 * 60 * 60;
+const LOGIN_ERROR_SLOT = '<!-- error -->';
+
+// The pages show untrusted Reddit and LLM text, and they lost the extension CSP when they moved here.
+const SECURITY_HEADERS = {
+  'content-security-policy':
+    "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'no-referrer',
+};
+
+// A fixed list, so no request path ever reaches the filesystem.
+const PAGES: Record<string, string> = {
+  '/': 'review.html',
+  '/review.html': 'review.html',
+  '/options.html': 'options.html',
+};
+const ASSETS = ['review.js', 'options.js', 'common.css', 'review.css', 'options.css'];
+const CONTENT_TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+};
+
+export interface AppConfig {
+  token: string;
+  /** PUBLIC_ORIGIN. */
+  origin: string;
+  /** Built pages. */
+  publicDir: string;
+}
 
 class HttpError extends Error {
   constructor(
@@ -26,9 +60,24 @@ class HttpError extends Error {
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest();
 
-/** #22 adds the login cookie here. Hashing gives equal lengths, which timingSafeEqual needs. */
-function isAuthorized(req: IncomingMessage, token: string): boolean {
-  return timingSafeEqual(sha256(req.headers.authorization ?? ''), sha256(`Bearer ${token}`));
+/** Hashing gives equal lengths, which timingSafeEqual needs. */
+const safeEqual = (a: string, b: string) => timingSafeEqual(sha256(a), sha256(b));
+
+/** Derived, so a stolen cookie can't be used as the token. Changing SERVER_TOKEN signs out every browser. */
+const cookieValue = (token: string) => createHmac('sha256', token).update(COOKIE).digest('hex');
+
+function readCookie(req: IncomingMessage): string {
+  for (const part of req.headers.cookie?.split(';') ?? []) {
+    const [k, v] = part.trim().split('=');
+    if (k === COOKIE) return v ?? '';
+  }
+  return '';
+}
+
+/** The one auth check: the extension sends the token, and browsers send the login cookie. */
+function authenticate(req: IncomingMessage, { token }: AppConfig): 'bearer' | 'cookie' | undefined {
+  if (safeEqual(req.headers.authorization ?? '', `Bearer ${token}`)) return 'bearer';
+  return safeEqual(readCookie(req), cookieValue(token)) ? 'cookie' : undefined;
 }
 
 function send(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) {
@@ -62,7 +111,34 @@ async function readJson(req: IncomingMessage): Promise<unknown> {
   }
 }
 
-async function route(req: IncomingMessage, res: ServerResponse, token: string): Promise<void> {
+async function sendFile(res: ServerResponse, status: number, dir: string, file: string): Promise<void> {
+  const body = await readFile(join(dir, file));
+  res.writeHead(status, { 'content-type': CONTENT_TYPES[extname(file)]!, 'cache-control': 'no-cache' });
+  res.end(body);
+}
+
+/** A page load without a login gets this as its 401, so there's no redirect or return address to handle. */
+async function sendLogin(res: ServerResponse, status: number, dir: string, error = ''): Promise<void> {
+  const html = await readFile(join(dir, 'login.html'), 'utf8');
+  res.writeHead(status, { 'content-type': CONTENT_TYPES['.html']! });
+  res.end(html.replace(LOGIN_ERROR_SLOT, error));
+}
+
+async function login(req: IncomingMessage, res: ServerResponse, config: AppConfig): Promise<void> {
+  const body = await readBody(req);
+  const token = new URLSearchParams(body.toString('utf8')).get('token')?.trim() ?? '';
+  if (!safeEqual(token, config.token)) {
+    await sendLogin(res, 401, config.publicDir, '<p class="error" role="alert">That token is not right.</p>');
+    return;
+  }
+  res.writeHead(303, {
+    location: '/',
+    'set-cookie': `${COOKIE}=${cookieValue(config.token)}; Max-Age=${COOKIE_MAX_AGE_S}; Path=/; HttpOnly; SameSite=Strict; Secure`,
+  });
+  res.end();
+}
+
+async function route(req: IncomingMessage, res: ServerResponse, config: AppConfig): Promise<void> {
   const path = req.url?.split('?')[0] ?? '';
   const key = `${req.method} ${path}`;
 
@@ -72,7 +148,23 @@ async function route(req: IncomingMessage, res: ServerResponse, token: string): 
     return;
   }
 
-  if (!isAuthorized(req, token)) throw new HttpError(401, 'Unauthorized');
+  if (key === 'POST /login') return login(req, res, config);
+  if (key === 'GET /login') return sendLogin(res, 200, config.publicDir);
+  if (key === 'GET /login.css') return sendFile(res, 200, config.publicDir, 'login.css');
+
+  const auth = authenticate(req, config);
+  const read = req.method === 'GET' || req.method === 'HEAD';
+  if (!auth) {
+    if (read && Object.hasOwn(PAGES, path)) return sendLogin(res, 401, config.publicDir);
+    throw new HttpError(401, 'Unauthorized');
+  }
+  // Forwarded headers are not trusted, and SameSite covers cross-site reads.
+  if (auth === 'cookie' && !read && req.headers.origin !== config.origin) {
+    throw new HttpError(403, 'Bad origin');
+  }
+
+  const file = Object.hasOwn(PAGES, path) ? PAGES[path] : ASSETS.find((f) => path === `/${f}`);
+  if (read && file) return sendFile(res, 200, config.publicDir, file);
 
   if (key === 'POST /api/seen') {
     if (ingestSeen(seenSchema.parse(await readJson(req)))) schedulePump();
@@ -116,6 +208,9 @@ function sendFailure(res: ServerResponse, e: unknown): void {
   }
 }
 
-export function createApp(token: string): Server {
-  return createServer((req, res) => void route(req, res, token).catch((e) => sendFailure(res, e)));
+export function createApp(config: AppConfig): Server {
+  return createServer((req, res) => {
+    for (const [k, v] of Object.entries(SECURITY_HEADERS)) res.setHeader(k, v);
+    void route(req, res, config).catch((e) => sendFailure(res, e));
+  });
 }
