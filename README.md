@@ -123,7 +123,7 @@ All selectors live in [`src/content/selectors.ts`](src/content/selectors.ts).
 
 ## Not built yet
 
-- **Milestone 5:** exports (plain text, comma-separated, uBlock Origin, RES) and full backup/restore. The Data tab currently has "Clear subreddit data" and "Reset everything".
+- **Milestone 5:** exports (plain text, comma-separated, uBlock Origin, RES). Backups moved to the server (see [Backups](#backups)), which the extension doesn't use yet. The Data tab currently has "Clear subreddit data" and "Reset everything".
 - **Milestone 6:** compare page. The usage table and outdated-rubric re-run prompt already exist.
 
 ## Server
@@ -132,17 +132,61 @@ The server (`src/server/`) is being built for epic #25. The extension doesn't ta
 
 ```bash
 npm run build
-SERVER_TOKEN=$(openssl rand -hex 32) npm run server
+SERVER_TOKEN=$(openssl rand -hex 32) PUBLIC_ORIGIN=http://localhost:8787 npm run server
 ```
 
-| Variable       | Default              | Purpose                                                                      |
-| -------------- | -------------------- | ---------------------------------------------------------------------------- |
-| `SERVER_TOKEN` | none, required       | Bearer token, at least 32 characters. The server refuses to start without it |
-| `DB_PATH`      | `data/reddithide.db` | SQLite database. Holds API keys unencrypted                                  |
-| `HOST`         | `127.0.0.1`          | Address to listen on                                                         |
-| `PORT`         | `8787`               | Port to listen on                                                            |
+| Variable        | Default              | Purpose                                                                                                                                                                        |
+| --------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SERVER_TOKEN`  | none, required       | Bearer token, at least 32 characters. The server refuses to start without it                                                                                                   |
+| `PUBLIC_ORIGIN` | none, required       | The address browsers use to reach the server, as an origin with no path or trailing slash, such as `https://reddithide.example.ts.net`. The server refuses to start without it |
+| `DB_PATH`       | `data/reddithide.db` | SQLite database. Holds API keys unencrypted. Backups go in `backups/` beside it                                                                                                |
+| `HOST`          | `127.0.0.1`          | Address to listen on. The Docker image sets `0.0.0.0`                                                                                                                          |
+| `PORT`          | `8787`               | Port to listen on                                                                                                                                                              |
 
 SPEC §5.4 lists the endpoints. Every one except `GET /healthz` needs `Authorization: Bearer <token>`.
+
+### Run in Docker
+
+The image serves plain HTTP on port 8787 and keeps everything in the `/data` volume. HTTPS and private-network access belong to whatever sits in front of it, such as Tailscale. Never expose it to the public internet.
+
+```bash
+docker build -t reddithide .
+(umask 077; echo "SERVER_TOKEN=$(openssl rand -hex 32)" > reddithide.env)
+echo "PUBLIC_ORIGIN=https://reddithide.example.ts.net" >> reddithide.env
+docker run -d --name reddithide --restart unless-stopped \
+  -p 127.0.0.1:8787:8787 \
+  -v reddithide-data:/data \
+  --env-file reddithide.env \
+  reddithide
+```
+
+The token is the password for the server, so keep this file private. Git and Docker ignore `*.env` in this repo.
+
+To update, rebuild the image, remove the container and run it again with the same volume. The data stays. If you mount a host folder on `/data` instead of a named volume, it must be writable by UID 1000.
+
+### Backups
+
+Once a day, soon after midnight UTC, the server writes `/data/backups/reddithide-YYYY-MM-DD.db` and keeps the newest 7. A failed backup appears in the runtime errors and the container log.
+
+**The database and backups hold your API keys unencrypted.** Treat them as secrets, and use keys with spending limits.
+
+The backups are on the same volume as the database, so they don't survive losing the disk. Copy them off the machine:
+
+```bash
+docker cp reddithide:/data/backups ./reddithide-backups
+```
+
+To restore one, stop the server and put it back as the database. Removing the journal matters: SQLite would otherwise apply a journal left by a crash to the restored file and corrupt it.
+
+```bash
+docker stop reddithide
+docker run -i --rm -v reddithide-data:/data --entrypoint sh reddithide \
+  -c 'umask 077; cat > /data/reddithide.db; rm -f /data/reddithide.db-journal' \
+  < reddithide-backups/reddithide-2026-10-31.db
+docker start reddithide
+```
+
+The same command restores onto a new machine: run it with a new volume name and an image built there, then start the server with that volume. Devices pick up the restored block set on their own, because every server start gives it a fresh `updatedAt`.
 
 ## Development
 

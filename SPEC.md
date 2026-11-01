@@ -181,7 +181,7 @@ A key-value table holds each setting as JSON, along with the runtime status and 
 - `queue`: `{ paused: boolean }`
 
 ### Backups
-A nightly `VACUUM INTO` writes a copy of the database and keeps 7 copies. Restoring means putting one back as the database file. The database and its backups hold API keys unencrypted, so the owner must treat them as secrets.
+A nightly `VACUUM INTO` writes a copy of the database to `backups/` beside it, one per UTC day, and keeps 7 copies. The server checks hourly, so it catches up after downtime. A failed backup is reported as a runtime error. Restoring means putting one back as the database file. The database and its backups hold API keys unencrypted, so the owner must treat them as secrets.
 
 Data in a standalone extension is not migrated. The server starts empty.
 
