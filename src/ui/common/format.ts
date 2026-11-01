@@ -25,7 +25,7 @@ export function formatNumber(n: number | undefined): string {
 /** Effective value for display: override wins. */
 export function effective(
   attr: string,
-  values: Record<string, AttributeResult> | undefined,
+  values: Record<string, Pick<AttributeResult, 'value' | 'confidence'>> | undefined,
   overrides: Record<string, AttributeValue> | undefined,
 ): { value: AttributeValue; confidence: number; overridden: boolean } | undefined {
   const o = overrides?.[attr];

@@ -1,13 +1,17 @@
 import { render } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { computeRubricVersion } from '../../classify/rubric';
-import browser from '../../shared/browser';
-import { isLocalUrl, PROVIDER_PRESETS, type ProviderPreset } from '../../shared/constants';
+import {
+  isLocalUrl,
+  LOCAL_ADDRESS_HINT,
+  PROVIDER_PRESETS,
+  type ProviderPreset,
+} from '../../shared/constants';
 import type { TestResult } from '../../shared/messages';
-import { rpc } from '../../shared/rpc';
 import { defaultSettings } from '../../shared/settings';
 import type { AttributeDef, ProviderProfile, Settings } from '../../shared/types';
 import { maskKey, originPattern, uuid } from '../../shared/util';
+import { requestOrigin, resetEverything, rpc } from '../common/backend';
 import { useSettings } from '../common/hooks';
 
 type Save = (patch: Partial<Settings>) => Promise<void>;
@@ -34,12 +38,9 @@ function Options() {
           </button>
         ))}
         <span class="spacer" />
-        <button
-          class="link"
-          onClick={() => void browser.tabs.create({ url: browser.runtime.getURL('review.html') })}
-        >
+        <a href="review.html" target="_blank">
           Open review page →
-        </button>
+        </a>
       </div>
       {tab === 'providers' && <Providers settings={settings} save={save} />}
       {tab === 'attributes' && <Attributes settings={settings} save={save} />}
@@ -67,13 +68,6 @@ function profileFromPreset(p: ProviderPreset): ProviderProfile {
   };
 }
 
-/** Starts a permission request for the profile's origin. Call synchronously from a click handler. */
-function requestOrigin(profile: ProviderProfile): Promise<boolean> {
-  const pattern = originPattern(profile.baseUrl);
-  if (!pattern) return Promise.resolve(false);
-  return browser.permissions.request({ origins: [pattern] });
-}
-
 function Providers({ settings, save }: { settings: Settings; save: Save }) {
   const [editing, setEditing] = useState<ProviderProfile | null>(null);
   const [presetIdx, setPresetIdx] = useState(0);
@@ -97,8 +91,11 @@ function Providers({ settings, save }: { settings: Settings; save: Save }) {
   return (
     <div class="stack">
       <div class="banner warn small">
-        API keys are stored unencrypted in this browser profile's extension storage. Use keys with spending
-        limits. Only public subreddit data (names, descriptions, post titles) is sent to providers.
+        {__SERVER_BUILD__
+          ? 'API keys are stored unencrypted on the server, and in its backups.'
+          : "API keys are stored unencrypted in this browser profile's extension storage."}{' '}
+        Use keys with spending limits. Only public subreddit data (names, descriptions, post titles) is sent
+        to providers.
       </div>
       <div class="row">
         <select value={presetIdx} onChange={(e) => setPresetIdx(Number(e.currentTarget.value))}>
@@ -202,7 +199,7 @@ function ProfileEditor(props: {
       }
     }
     if (!originPattern(p.baseUrl)) {
-      setNote('Base URL must start with http:// or https://');
+      setNote('Base URL must be a valid http:// or https:// address.');
       return null;
     }
     return {
@@ -374,8 +371,14 @@ function ProfileEditor(props: {
       </div>
       {isLocalUrl(p.baseUrl) && (
         <div class="banner info small">
-          Local servers must allow the extension's origin. For Ollama, start it with{' '}
-          <code>OLLAMA_ORIGINS="moz-extension://*"</code>.
+          {__SERVER_BUILD__ ? (
+            LOCAL_ADDRESS_HINT
+          ) : (
+            <>
+              Local servers must allow the extension's origin. For Ollama, start it with{' '}
+              <code>OLLAMA_ORIGINS="moz-extension://*"</code>.
+            </>
+          )}
         </div>
       )}
       {note && <div class="banner info small">{note}</div>}
@@ -677,21 +680,27 @@ function BehaviorTab({ settings, save }: { settings: Settings; save: Save }) {
           value={en.maxWaitHours}
           onChange={(e) => save({ enrichment: { ...en, maxWaitHours: Number(e.currentTarget.value) } })}
         />
-        <label>Reddit request interval (ms)</label>
-        <input
-          type="number"
-          min="1000"
-          step="500"
-          value={settings.queue.redditMinIntervalMs}
-          onChange={(e) =>
-            save({ queue: { ...settings.queue, redditMinIntervalMs: Number(e.currentTarget.value) } })
-          }
-        />
+        {!__SERVER_BUILD__ && (
+          <>
+            <label>Reddit request interval (ms)</label>
+            <input
+              type="number"
+              min="1000"
+              step="500"
+              value={settings.queue.redditMinIntervalMs}
+              onChange={(e) =>
+                save({ queue: { ...settings.queue, redditMinIntervalMs: Number(e.currentTarget.value) } })
+              }
+            />
+          </>
+        )}
       </div>
-      <p class="small muted">
-        The request interval applies to direct reddit.com requests, which aren't made yet: Reddit currently
-        blocks its .json endpoints for extensions.
-      </p>
+      {!__SERVER_BUILD__ && (
+        <p class="small muted">
+          The request interval applies to direct reddit.com requests, which aren't made yet: Reddit currently
+          blocks its .json endpoints for extensions.
+        </p>
+      )}
     </div>
   );
 }
@@ -707,8 +716,7 @@ function DataTab() {
     setNote('Subreddit data and usage cleared.');
   };
   const resetAll = async () => {
-    await rpc('clearAllData');
-    await browser.storage.local.clear();
+    await resetEverything();
     setConfirm('');
     setNote('Everything was reset, including providers and API keys.');
   };

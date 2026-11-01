@@ -73,4 +73,5 @@ gh run view --log-failed                          # if a check fails: read the f
 - **Hiding must happen before paint.** The content script runs at `document_start` and marks posts in its MutationObserver callback; don't move hiding into anything asynchronous.
 - **Reddit's `about.json`/`top.json` are blocked for logged-out clients** (HTTP 403 as of 2026-10-16), so enrichment uses the DOM. See README "Reddit JSON enrichment is not active".
 - **Anthropic connector deviates from SPEC §6.4 on purpose:** structured outputs instead of a forced tool call, and no `temperature` on current models. See README "Anthropic details".
+- **The options and review pages build twice until #23.** `build.mjs` swaps `src/ui/common/backend.ts` for `backend.server.ts` in the server's copy, so those pages reach the extension APIs only through `backend.ts`. Importing `shared/browser` from them breaks the server's copy, because the polyfill throws outside an extension. `__SERVER_BUILD__` picks text that differs.
 - **Debug bridge builds** (`npm run build:debug`) relay page messages to the background RPC. Never ship or package one. #23 updates or removes the bridge.

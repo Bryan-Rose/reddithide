@@ -135,15 +135,21 @@ npm run build
 SERVER_TOKEN=$(openssl rand -hex 32) PUBLIC_ORIGIN=http://localhost:8787 npm run server
 ```
 
-| Variable        | Default              | Purpose                                                                                                                                                                        |
-| --------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `SERVER_TOKEN`  | none, required       | Bearer token, at least 32 characters. The server refuses to start without it                                                                                                   |
-| `PUBLIC_ORIGIN` | none, required       | The address browsers use to reach the server, as an origin with no path or trailing slash, such as `https://reddithide.example.ts.net`. The server refuses to start without it |
-| `DB_PATH`       | `data/reddithide.db` | SQLite database. Holds API keys unencrypted. Backups go in `backups/` beside it                                                                                                |
-| `HOST`          | `127.0.0.1`          | Address to listen on. The Docker image sets `0.0.0.0`                                                                                                                          |
-| `PORT`          | `8787`               | Port to listen on                                                                                                                                                              |
+| Variable        | Default              | Purpose                                                                                                                                                                                                             |
+| --------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SERVER_TOKEN`  | none, required       | Bearer token, at least 32 characters. The server refuses to start without it                                                                                                                                        |
+| `PUBLIC_ORIGIN` | none, required       | The address browsers use to reach the server, as an origin with no path or trailing slash, such as `https://reddithide.example.ts.net`. Must be `https`, except on localhost. The server refuses to start otherwise |
+| `DB_PATH`       | `data/reddithide.db` | SQLite database. Holds API keys unencrypted. Backups go in `backups/` beside it                                                                                                                                     |
+| `HOST`          | `127.0.0.1`          | Address to listen on. The Docker image sets `0.0.0.0`                                                                                                                                                               |
+| `PORT`          | `8787`               | Port to listen on                                                                                                                                                                                                   |
 
-SPEC §5.4 lists the endpoints. Every one except `GET /healthz` needs `Authorization: Bearer <token>`.
+SPEC §5.4 lists the endpoints. Every one except `GET /healthz` and the login page needs `Authorization: Bearer <token>` or the login cookie.
+
+### Pages
+
+Open `PUBLIC_ORIGIN` in a browser and log in with the token. `/` is the review page and `/options.html` is the options page. The extension still has its own copies of both and doesn't use these until #23.
+
+The login cookie lasts a year, and there's no logout. Changing `SERVER_TOKEN` signs out every browser. The pages work on a phone, but the review table scrolls sideways: it's laid out for managing data on a desktop.
 
 ### Run in Docker
 

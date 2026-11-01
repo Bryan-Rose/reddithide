@@ -12,9 +12,9 @@ import { tick } from './pipeline';
 const TICK_MS = 60_000;
 const BACKUP_CHECK_MS = 60 * 60_000;
 
-let token: string;
+let config: ReturnType<typeof readConfig>;
 try {
-  ({ token } = readConfig(process.env));
+  config = readConfig(process.env);
 } catch (e) {
   console.error(errorMessage(e));
   process.exit(1);
@@ -34,7 +34,9 @@ mkdirSync(dirname(dbPath), { recursive: true });
 openDb(dbPath);
 publishBlockSet(true);
 
-createApp(token).listen(port, host, () => console.info(`[RedditHide] listening on ${host}:${port}`));
+createApp({ ...config, publicDir: join(import.meta.dirname, 'public') }).listen(port, host, () =>
+  console.info(`[RedditHide] listening on ${host}:${port}`),
+);
 tick();
 setInterval(tick, TICK_MS);
 runBackup(backupDir);

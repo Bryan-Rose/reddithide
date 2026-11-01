@@ -139,16 +139,15 @@ describe('buildBlockSet', () => {
 
 describe('countStates', () => {
   it('groups states and counts outdated rubrics', () => {
-    const recs = [
-      { pipelineState: 'discovered' },
-      { pipelineState: 'meta_done' },
-      { pipelineState: 'samples_done' },
-      { pipelineState: 'language_done' },
-      { pipelineState: 'classified', classification: { rubricVersion: 'old' } },
-      { pipelineState: 'classified', classification: { rubricVersion: 'new' } },
-      { pipelineState: 'failed' },
-    ] as SubredditRecord[];
-    expect(countStates(recs, 'new')).toMatchObject({
+    const rows = [
+      { state: 'discovered', n: 1, outdated: 1 },
+      { state: 'meta_done', n: 1, outdated: 1 },
+      { state: 'samples_done', n: 1, outdated: 1 },
+      { state: 'language_done', n: 1, outdated: 1 },
+      { state: 'classified', n: 2, outdated: 1 },
+      { state: 'failed', n: 1, outdated: 1 },
+    ] as const;
+    expect(countStates([...rows])).toMatchObject({
       discovered: 1,
       waitingSamples: 1,
       waitingLlm: 2,
