@@ -55,7 +55,10 @@ export function tx<T>(fn: (() => T) & (T extends PromiseLike<unknown> ? never : 
 
 const STARTED_AT = Date.now();
 
-/** Changes with every write, including settings and usage, so it can only cause an extra refresh. */
+/**
+ * Changes with every write, including settings and usage, so it can only cause an extra refresh.
+ * total_changes() counts this connection only, so this relies on the server having just one.
+ */
 export function getRevision(): string {
   const row = db().prepare('SELECT total_changes() AS n').get() as { n: number };
   return `${STARTED_AT}-${row.n}`;

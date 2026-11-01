@@ -20,7 +20,10 @@ export async function rpc<M extends ServerRpcMethod>(
     location.reload();
     throw new Error('Not logged in');
   }
-  const body = (await res.json()) as { ok: boolean; result: ServerRpcMethods[M]['result']; error?: string };
+  // A proxy in front of the server can answer with an HTML error page.
+  const body = (await res.json().catch(() => {
+    throw new Error(`Server answered with HTTP ${res.status}`);
+  })) as { ok: boolean; result: ServerRpcMethods[M]['result']; error?: string };
   if (!body.ok) throw new Error(body.error);
   if (SETTINGS_WRITES.includes(method)) settingsEvents.dispatchEvent(new Event('change'));
   return body.result;

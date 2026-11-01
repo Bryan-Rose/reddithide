@@ -109,6 +109,7 @@ describe('login and pages', () => {
     }
     expect((await fetch(`${base}/review.js`)).status).toBe(401);
     expect(await (await fetch(`${base}/login.css`)).text()).toBe('login.css');
+    expect((await fetch(`${base}/login`)).status).toBe(200);
   });
   it('serves listed files, with the CSP, to the cookie or the token', async () => {
     const res = await fetch(base, { headers: { cookie: await cookie() } });
