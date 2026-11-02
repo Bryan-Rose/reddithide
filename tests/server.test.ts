@@ -1,15 +1,16 @@
 // HTTP API and concurrency, against a real listening server and in-memory SQLite.
 import { mkdtempSync, writeFileSync } from 'node:fs';
+import type { ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getKv, getRecord, openDb, clearAll, clearKv, tx, updateRecord } from '../src/server/db';
-import { createApp } from '../src/server/http';
+import { createApp, sendFailure } from '../src/server/http';
 import { toRow } from '../src/server/router';
 import { pump } from '../src/server/pipeline';
 import { getRubricVersion, getSettings, saveSettings } from '../src/server/settings';
-import type { ProviderProfile, SubredditRecord } from '../src/shared/types';
+import type { ProviderProfile, RuleGroup, SubredditRecord } from '../src/shared/types';
 import { toSettingsPatch } from '../src/ui/common/backend.server';
 
 const TOKEN = 'x'.repeat(32);
@@ -246,6 +247,57 @@ describe('GET /api/blockset', () => {
       expect(((await res.json()) as { names: string[] }).names).toEqual(['ew']);
     });
   });
+
+  it.each([
+    [
+      'over18',
+      { attribute: 'over18_flag', operator: 'is', value: true },
+      () =>
+        post('/api/seen', { names: [{ name: 'cats', displayName: 'cats', sighting: false, over18: true }] }),
+    ],
+    [
+      'weekly visitors',
+      { attribute: 'subscribers', operator: 'gte', value: 100 },
+      () => post('/api/meta', { name: 'cats', displayName: 'cats', meta: { weeklyActiveUsers: 500 } }),
+    ],
+  ] as [string, RuleGroup['children'][number], () => Promise<Response>][])(
+    'republishes when %s changes on a subreddit that is never classified',
+    async (_, condition, update) => {
+      const rule: RuleGroup = { op: 'all', children: [condition] };
+      saveSettings({ filterLists: [{ id: 'f', name: 'F', rule }], activeFilterListId: 'f' });
+      await post('/api/seen', seen('cats'));
+      const etag = (await request('/api/blockset')).headers.get('etag')!;
+
+      await update();
+      await vi.waitFor(async () => {
+        const res = await request('/api/blockset', { headers: { 'if-none-match': etag } });
+        expect(res.status).toBe(200);
+        expect(((await res.json()) as { names: string[] }).names).toEqual(['cats']);
+      });
+    },
+  );
+});
+
+describe('failed responses', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('answers 500 when a body cannot be serialized', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(JSON, 'stringify').mockImplementationOnce(() => {
+      throw new TypeError('cannot serialize');
+    });
+    const res = await fetch(`${base}/healthz`);
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ ok: false, error: 'Internal error' });
+  });
+
+  it('closes a response that has already started', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = { headersSent: true, destroy: vi.fn() };
+    sendFailure(res as unknown as ServerResponse, new Error('late'));
+    expect(res.destroy).toHaveBeenCalledOnce();
+    expect(error).toHaveBeenCalled();
+  });
 });
 
 describe('POST /api/rpc', () => {
@@ -358,11 +410,13 @@ describe('concurrency', () => {
       });
     const badOutput = () =>
       new Response(JSON.stringify({ choices: [{ message: { content: 'not json' } }] }), { status: 200 });
+    const providerError = () => new Response('{}', { status: 400 });
 
     // Invalid output is retried once before the job gives up, so it takes two replies.
     it.each([
       ['a refusal', [refusal]],
       ['invalid output', [badOutput, badOutput]],
+      ['a provider error', [providerError]],
     ])('keeps a reclassify requested before %s', async (_, failures) => {
       const replies: ((r: Response) => void)[] = [];
       const llm = vi.fn(() => new Promise<Response>((r) => replies.push(r)));
@@ -385,6 +439,42 @@ describe('concurrency', () => {
       replies[failures.length]!(llmReply());
       await vi.waitFor(() => expect(getRecord('cats')!.pipelineState).toBe('classified'));
       expect(getRecord('cats')!.pendingReclassify).toBeUndefined();
+    });
+
+    it.each([
+      ['a result', [llmReply]],
+      ['a refusal', [refusal]],
+      ['invalid output', [badOutput, badOutput]],
+      ['a provider error', [providerError]],
+    ])('drops %s for a subreddit deleted and seen again during the call', async (_, stale) => {
+      const replies: ((r: Response) => void)[] = [];
+      const llm = vi.fn(() => new Promise<Response>((r) => replies.push(r)));
+      vi.stubGlobal('fetch', (url: string, init: RequestInit) =>
+        url.startsWith('http://llm.test') ? llm() : realFetch(url, init),
+      );
+      saveSettings({ profiles: [profile], defaultProfileId: 'p' });
+      const posts = [1, 2, 3].map((i) => ({ id: `${i}`, title: `T${i}` }));
+      await post('/api/seen', seen('cats', posts));
+      pump();
+      await vi.waitFor(() => expect(llm).toHaveBeenCalledTimes(1));
+
+      await rpc('deleteSubreddits', { names: ['cats'] });
+      await post('/api/seen', seen('cats', posts));
+      for (const [i, reply] of stale.entries()) {
+        await vi.waitFor(() => expect(llm).toHaveBeenCalledTimes(i + 1));
+        replies[i]!(reply());
+      }
+
+      // The new record gets its own call, so nothing from the old job held it back.
+      await vi.waitFor(() => expect(llm).toHaveBeenCalledTimes(stale.length + 1));
+      const fresh = getRecord('cats')!;
+      expect(fresh.classification).toBeUndefined();
+      expect(fresh.lastError).toBeUndefined();
+      expect(fresh.attempts).toBe(0);
+
+      replies[stale.length]!(llmReply());
+      await vi.waitFor(() => expect(getRecord('cats')!.pipelineState).toBe('classified'));
+      expect(getRecord('cats')!.classificationHistory).toBeUndefined();
     });
 
     it('keeps a seen update that arrives meanwhile, and uses language evidence', async () => {

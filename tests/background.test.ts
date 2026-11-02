@@ -64,6 +64,27 @@ describe('ingestSeen', () => {
   });
 });
 
+describe('ingest change reports', () => {
+  const flagged = (over18?: boolean) => ({
+    names: [{ name: 'cats', displayName: 'Cats', sighting: false, over18 }],
+  });
+  it('reports a block set change only when over18 changes', () => {
+    expect(ingestSeen(flagged())).toEqual({ pipeline: true, blockSet: false });
+    expect(ingestSeen(flagged(true)).blockSet).toBe(true);
+    expect(ingestSeen(flagged(true)).blockSet).toBe(false);
+    expect(ingestSeen(flagged()).blockSet).toBe(false);
+    expect(ingestSeen(flagged(false)).blockSet).toBe(true);
+  });
+  it('reports a block set change only when weekly visitors change', () => {
+    const meta = (weeklyActiveUsers?: number) =>
+      ingestMeta({ name: 'cats', displayName: 'Cats', meta: { title: 'T', weeklyActiveUsers } });
+    expect(meta()).toBe(false);
+    expect(meta(5)).toBe(true);
+    expect(meta(5)).toBe(false);
+    expect(meta()).toBe(false);
+  });
+});
+
 describe('ingestMeta', () => {
   it('merges subreddit header metadata', () => {
     ingestMeta({

@@ -34,29 +34,32 @@ export function mergeSamples(rec: SubredditRecord, posts: SampleItem[], now: num
   rec.samples = { fetchedAt: now, source: 'dom', items, titles: items.map((i) => i.title) };
 }
 
-/** Returns true if anything changed that the pipeline may care about. */
-export function ingestSeen(msg: SeenBatch, now = Date.now()): boolean {
+/** Reports what changed: `pipeline` for new records or samples, `blockSet` for a field rules can read. */
+export function ingestSeen(msg: SeenBatch, now = Date.now()): { pipeline: boolean; blockSet: boolean } {
   const byName = new Map<string, SeenBatch['names'][number]>();
   for (const n of msg.names.slice(0, SEEN_MAX_NAMES)) {
     const name = normalizeSubreddit(n.name);
     if (name) byName.set(name, n);
   }
-  let changed = false;
+  let pipeline = false;
+  let blockSet = false;
   updateMany([...byName.keys()], (existing, name) => {
     const s = byName.get(name)!;
     const rec = existing ?? newRecord(name, s.displayName, now);
-    if (!existing) changed = true;
+    if (!existing) pipeline = true;
     if (s.sighting || !existing) {
       rec.seenCount += 1;
       rec.lastSeenAt = now;
     }
     if (s.displayName) rec.displayName = s.displayName;
+    const over18 = rec.meta?.over18;
     if (s.over18 !== undefined || s.quarantined !== undefined) {
       const meta = baseMeta(rec, now);
       if (s.over18 !== undefined) meta.over18 = s.over18;
       if (s.quarantined !== undefined) meta.quarantined = s.quarantined;
       rec.meta = meta;
     }
+    if (rec.meta?.over18 !== over18) blockSet = true;
     const before = rec.samples?.items?.length ?? 0;
     mergeSamples(
       rec,
@@ -70,15 +73,17 @@ export function ingestSeen(msg: SeenBatch, now = Date.now()): boolean {
       })),
       now,
     );
-    if ((rec.samples?.items?.length ?? 0) !== before) changed = true;
+    if ((rec.samples?.items?.length ?? 0) !== before) pipeline = true;
     return rec;
   });
-  return changed;
+  return { pipeline, blockSet };
 }
 
-export function ingestMeta(msg: MetaBatch, now = Date.now()): void {
+/** Returns true if a field that rules can read changed. */
+export function ingestMeta(msg: MetaBatch, now = Date.now()): boolean {
   const name = normalizeSubreddit(msg.name);
-  if (!name) return;
+  if (!name) return false;
+  let blockSet = false;
   updateRecord(name, (existing) => {
     const rec = existing ?? { ...newRecord(name, msg.displayName, now), seenCount: 1 };
     const meta = baseMeta(rec, now);
@@ -89,6 +94,8 @@ export function ingestMeta(msg: MetaBatch, now = Date.now()): void {
       publicDescription: msg.meta.publicDescription?.slice(0, 1000) ?? meta.publicDescription,
       weeklyActiveUsers: msg.meta.weeklyActiveUsers ?? meta.weeklyActiveUsers,
     };
+    blockSet = rec.meta.weeklyActiveUsers !== meta.weeklyActiveUsers;
     return rec;
   });
+  return blockSet;
 }
