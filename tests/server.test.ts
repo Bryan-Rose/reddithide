@@ -465,7 +465,7 @@ describe('concurrency', () => {
         replies[i]!(reply());
       }
 
-      // The new record gets its own call, so nothing from the old job held it back.
+      // Once the stale call returns, the new record gets its own call, so the old job left nothing behind.
       await vi.waitFor(() => expect(llm).toHaveBeenCalledTimes(stale.length + 1));
       const fresh = getRecord('cats')!;
       expect(fresh.classification).toBeUndefined();
