@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { summarizeZodError } from '../classify/schema';
 import type { ServerRpcMethod } from '../shared/messages';
 import { errorMessage } from '../shared/util';
-import { getBlockSet } from './blockset';
+import { getBlockSet, scheduleBlockSet } from './blockset';
 import { pingDb } from './db';
 import { ingestMeta, ingestSeen } from './ingest';
 import { schedulePump } from './pipeline';
@@ -81,8 +81,9 @@ function authenticate(req: IncomingMessage, { token }: AppConfig): 'bearer' | 'c
 }
 
 function send(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) {
+  const text = JSON.stringify(body);
   res.writeHead(status, { 'content-type': 'application/json', ...headers });
-  res.end(JSON.stringify(body));
+  res.end(text);
 }
 
 /** Stops keeping data past the limit but drains the rest, so the client can read the 413. */
@@ -167,10 +168,12 @@ async function route(req: IncomingMessage, res: ServerResponse, config: AppConfi
   if (read && file) return sendFile(res, 200, config.publicDir, file);
 
   if (key === 'POST /api/seen') {
-    if (ingestSeen(seenSchema.parse(await readJson(req)))) schedulePump();
+    const changes = ingestSeen(seenSchema.parse(await readJson(req)));
+    if (changes.pipeline) schedulePump();
+    if (changes.blockSet) scheduleBlockSet();
     send(res, 200, { ok: true });
   } else if (key === 'POST /api/meta') {
-    ingestMeta(metaSchema.parse(await readJson(req)));
+    if (ingestMeta(metaSchema.parse(await readJson(req)))) scheduleBlockSet();
     schedulePump();
     send(res, 200, { ok: true });
   } else if (key === 'GET /api/blockset') {
@@ -196,8 +199,12 @@ async function callRpc(res: ServerResponse, method: ServerRpcMethod, raw: unknow
   }
 }
 
-function sendFailure(res: ServerResponse, e: unknown): void {
-  if (e instanceof HttpError) {
+export function sendFailure(res: ServerResponse, e: unknown): void {
+  if (res.headersSent) {
+    // Too late for a status, so a dropped connection is how the client learns it failed.
+    console.error('[RedditHide] response failed', e);
+    res.destroy();
+  } else if (e instanceof HttpError) {
     send(res, e.status, { ok: false, error: e.message }, e.status === 413 ? { connection: 'close' } : {});
   } else if (e instanceof z.ZodError) {
     send(res, 400, { ok: false, error: summarizeZodError(e) });

@@ -152,9 +152,16 @@ function pickProfile(rec: SubredditRecord, settings: Settings): ProviderProfile 
   return settings.profiles.find((p) => p.id === wanted) ?? settings.profiles[0];
 }
 
-function recordFailure(name: string, stage: string, message: string, now: number, retryInMs = 60_000) {
+function recordFailure(
+  name: string,
+  stage: string,
+  message: string,
+  now: number,
+  retryInMs = 60_000,
+  job?: SubredditRecord,
+) {
   updateRecord(name, (cur) => {
-    if (!cur) return undefined;
+    if (!cur || (job && superseded(cur, job))) return undefined;
     const attempts = cur.attempts + 1;
     const failed = attempts >= MAX_ATTEMPTS;
     return {
@@ -173,6 +180,15 @@ function recordFailure(name: string, stage: string, message: string, now: number
 /** The user queued a reclassification after this job started, so that request must survive it. */
 function requeued(cur: SubredditRecord, job: SubredditRecord): boolean {
   return cur.pendingReclassify?.requestedAt !== job.pendingReclassify?.requestedAt;
+}
+
+/** The subreddit was deleted and seen again during this job, so `cur` is a different record. */
+function recreated(cur: SubredditRecord, job: SubredditRecord): boolean {
+  return cur.firstSeenAt !== job.firstSeenAt;
+}
+
+function superseded(cur: SubredditRecord, job: SubredditRecord): boolean {
+  return recreated(cur, job) || requeued(cur, job);
 }
 
 async function classifyJob(rec: SubredditRecord, profile: ProviderProfile): Promise<void> {
@@ -200,7 +216,7 @@ async function classifyJob(rec: SubredditRecord, profile: ProviderProfile): Prom
 
     if (outcome.kind === 'ok') {
       updateRecord(rec.name, (cur) => {
-        if (!cur) return undefined;
+        if (!cur || recreated(cur, rec)) return undefined;
         const history = cur.classification
           ? [cur.classification, ...(cur.classificationHistory ?? [])].slice(0, HISTORY_LIMIT)
           : cur.classificationHistory;
@@ -224,7 +240,7 @@ async function classifyJob(rec: SubredditRecord, profile: ProviderProfile): Prom
       const fallback = settings.fallbackProfileId;
       const useFallback = !!fallback && fallback !== profile.id && !rec.pendingReclassify?.isFallback;
       updateRecord(rec.name, (cur) => {
-        if (!cur || requeued(cur, rec)) return undefined;
+        if (!cur || superseded(cur, rec)) return undefined;
         const lastError = {
           at: now,
           stage: 'classify',
@@ -251,7 +267,7 @@ async function classifyJob(rec: SubredditRecord, profile: ProviderProfile): Prom
     }
 
     updateRecord(rec.name, (cur) => {
-      if (!cur || requeued(cur, rec)) return undefined;
+      if (!cur || superseded(cur, rec)) return undefined;
       return {
         ...cur,
         pipelineState: 'failed',
@@ -270,8 +286,10 @@ async function classifyJob(rec: SubredditRecord, profile: ProviderProfile): Prom
 }
 
 function handleProviderError(rec: SubredditRecord, profile: ProviderProfile, e: unknown, now: number) {
+  const fail = (message: string, retryInMs?: number) =>
+    recordFailure(rec.name, 'classify', message, now, retryInMs, rec);
   if (!(e instanceof ProviderError)) {
-    recordFailure(rec.name, 'classify', errorMessage(e), now);
+    fail(errorMessage(e));
     return;
   }
   const withHint = e.hint ? `${e.message}\n${e.hint}` : e.message;
@@ -295,11 +313,11 @@ function handleProviderError(rec: SubredditRecord, profile: ProviderProfile, e: 
     }
     case 'bad_request':
       if (e.hint) reportError('provider_hint', `${profile.name}: ${e.hint}`, profile.id);
-      recordFailure(rec.name, 'classify', withHint, now);
+      fail(withHint);
       return;
     default:
       if (e.hint) reportError('provider_hint', `${profile.name}: ${e.hint}`, profile.id);
-      recordFailure(rec.name, 'classify', withHint, now, 5 * 60_000);
+      fail(withHint, 5 * 60_000);
   }
 }
 
