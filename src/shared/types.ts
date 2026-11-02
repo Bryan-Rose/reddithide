@@ -131,7 +131,8 @@ export interface SubredditRow {
   seenCount: number;
   pipelineState: PipelineState;
   summary?: string;
-  values?: Record<string, AttributeResult>;
+  /** No reasons: the table doesn't show them, and they would be most of the payload. */
+  values?: Record<string, Pick<AttributeResult, 'value' | 'confidence'>>;
   overrides?: Record<string, AttributeValue>;
   over18?: boolean;
   detectedLanguage?: string;

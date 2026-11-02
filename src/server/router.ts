@@ -5,17 +5,19 @@ import { getConnector } from '../providers';
 import { ProviderError } from '../providers/types';
 import type { ServerRpcMethod, ServerRpcMethods, TestResult } from '../shared/messages';
 import { BLOCKSET_KEY, RUNTIME_KEY } from '../shared/settings';
-import type { QueueCounts, SubredditRecord, SubredditRow } from '../shared/types';
+import type { AttributeResult, QueueCounts, SubredditRecord, SubredditRow } from '../shared/types';
 import { errorMessage } from '../shared/util';
 import { publishBlockSet, scheduleBlockSet } from './blockset';
 import {
   clearAll,
   clearKv,
+  countByState,
   deleteKv,
   deleteRecords,
   getAllRecords,
   getAllUsage,
   getRecord,
+  getRevision,
   updateRecord,
 } from './db';
 import { outdatedNames, pump, queueReclassify } from './pipeline';
@@ -28,6 +30,12 @@ type Handlers = {
   ) => ServerRpcMethods[M]['result'] | Promise<ServerRpcMethods[M]['result']>;
 };
 
+function withoutReasons(values: Record<string, AttributeResult>): SubredditRow['values'] {
+  return Object.fromEntries(
+    Object.entries(values).map(([k, { value, confidence }]) => [k, { value, confidence }]),
+  );
+}
+
 export function toRow(r: SubredditRecord): SubredditRow {
   return {
     name: r.name,
@@ -37,7 +45,7 @@ export function toRow(r: SubredditRecord): SubredditRow {
     seenCount: r.seenCount,
     pipelineState: r.pipelineState,
     summary: r.classification?.summary,
-    values: r.classification?.values,
+    values: r.classification && withoutReasons(r.classification.values),
     overrides: r.overrides,
     over18: r.meta?.over18,
     detectedLanguage: (r.languageEvidence?.firefox ?? r.languageEvidence?.reddit)?.code,
@@ -49,7 +57,7 @@ export function toRow(r: SubredditRecord): SubredditRow {
   };
 }
 
-export function countStates(records: SubredditRecord[], rubric: string): QueueCounts {
+export function countStates(rows: ReturnType<typeof countByState>): QueueCounts {
   const c: QueueCounts = {
     discovered: 0,
     waitingSamples: 0,
@@ -59,26 +67,27 @@ export function countStates(records: SubredditRecord[], rubric: string): QueueCo
     failed: 0,
     skipped: 0,
     outdatedRubric: 0,
-    total: records.length,
+    total: 0,
   };
-  for (const r of records) {
-    switch (r.pipelineState) {
+  for (const { state, n, outdated } of rows) {
+    c.total += n;
+    switch (state) {
       case 'discovered':
-        c.discovered++;
+        c.discovered += n;
         break;
       case 'meta_done':
-        c.waitingSamples++;
+        c.waitingSamples += n;
         break;
       case 'samples_done':
       case 'language_done':
-        c.waitingLlm++;
+        c.waitingLlm += n;
         break;
       case 'classified':
-        c.classified++;
-        if (r.classification?.rubricVersion !== rubric) c.outdatedRubric++;
+        c.classified += n;
+        c.outdatedRubric = outdated;
         break;
       default:
-        c[r.pipelineState]++;
+        c[state] += n;
     }
   }
   return c;
@@ -118,7 +127,8 @@ const handlers: Handlers = {
   async getStatus() {
     const rubricVersion = await getRubricVersion();
     return {
-      counts: countStates(getAllRecords(), rubricVersion),
+      counts: countStates(countByState(rubricVersion)),
+      revision: getRevision(),
       runtime: getRuntime(),
       rubricVersion,
       paused: getSettings().queue.paused,

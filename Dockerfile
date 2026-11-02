@@ -10,6 +10,7 @@ ENV HOST=0.0.0.0 PORT=8787 DB_PATH=/data/reddithide.db
 WORKDIR /app
 # .mjs because there is no package.json here to mark the bundle as an ES module.
 COPY --from=build /app/dist-server/index.js index.mjs
+COPY --from=build /app/dist-server/public public
 # Before VOLUME, so a new named volume starts out owned by node.
 RUN mkdir /data && chown node:node /data && chmod 700 /data
 VOLUME /data

@@ -1,8 +1,8 @@
 import { render } from 'preact';
-import { useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useState } from 'preact/hooks';
 import type { RpcMethods } from '../../shared/messages';
-import { rpc } from '../../shared/rpc';
 import type { PipelineState, Settings, SubredditRow, UsageRow } from '../../shared/types';
+import { rpc } from '../common/backend';
 import { effective, formatValue } from '../common/format';
 import { usePoll, useSettings } from '../common/hooks';
 import { Drawer } from './Drawer';
@@ -44,6 +44,10 @@ function Review() {
             Usage
           </button>
         </div>
+        <span class="spacer" />
+        <a href="options.html" target="_blank">
+          Options →
+        </a>
       </header>
       {status && status.counts.outdatedRubric > 0 && (
         <div class="banner warn row">
@@ -58,14 +62,14 @@ function Review() {
           <button onClick={() => void rpc('setPaused', { paused: false })}>Resume</button>
         </div>
       )}
-      {tab === 'subreddits' && <Subreddits settings={settings} />}
+      {tab === 'subreddits' && <Subreddits settings={settings} revision={status?.revision} />}
       {tab === 'filters' && <FilterLists settings={settings} save={save} />}
       {tab === 'usage' && <Usage settings={settings} />}
     </div>
   );
 }
 
-function Subreddits({ settings }: { settings: Settings }) {
+function Subreddits({ settings, revision }: { settings: Settings; revision: string | undefined }) {
   const [rows, setRows] = useState<SubredditRow[]>([]);
   const [query, setQuery] = useState('');
   const [state, setState] = useState<'' | PipelineState>('');
@@ -77,7 +81,10 @@ function Subreddits({ settings }: { settings: Settings }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [note, setNote] = useState('');
 
-  usePoll(() => void rpc('listSubreddits').then(setRows), 5000);
+  // The whole table is several MB at 10k subreddits, so it's fetched only when something changed.
+  useEffect(() => {
+    if (revision) void rpc('listSubreddits').then(setRows);
+  }, [revision]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

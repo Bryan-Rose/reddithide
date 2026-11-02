@@ -147,6 +147,9 @@ export interface ProviderPreset {
   local?: boolean;
 }
 
+// On the server this is a placeholder the user must replace: the options page won't accept it as a URL.
+const LOCAL_HOST = __SERVER_BUILD__ ? '<host>' : 'localhost';
+
 export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     label: 'Anthropic',
@@ -188,19 +191,22 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     label: 'Ollama (local)',
     kind: 'openai-compatible',
-    baseUrl: 'http://localhost:11434/v1',
+    baseUrl: `http://${LOCAL_HOST}:11434/v1`,
     structuredOutput: 'native',
     local: true,
   },
   {
     label: 'LM Studio (local)',
     kind: 'openai-compatible',
-    baseUrl: 'http://localhost:1234/v1',
+    baseUrl: `http://${LOCAL_HOST}:1234/v1`,
     structuredOutput: 'native',
     local: true,
   },
   { label: 'Custom', kind: 'openai-compatible', baseUrl: '', structuredOutput: 'json_object' },
 ];
+
+export const LOCAL_ADDRESS_HINT =
+  'This address is resolved from the server. Inside the container, localhost is the container itself, so use an address the container can reach.';
 
 export function isLocalUrl(baseUrl: string): boolean {
   try {

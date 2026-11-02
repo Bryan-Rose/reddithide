@@ -116,6 +116,8 @@ const handlers: Handlers = {
     ]);
     return {
       counts: countStates(records, rubricVersion),
+      // shortcut: always differs, so the extension's table refreshes on every poll, as before. #23 removes this.
+      revision: String(Date.now()),
       runtime,
       rubricVersion,
       paused: settings.queue.paused,

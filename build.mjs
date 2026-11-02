@@ -1,12 +1,14 @@
-// Bundles each entry point with esbuild and copies static files into dist/.
+// Bundles each entry point with esbuild and copies static files into dist/ and dist-server/.
 import * as esbuild from 'esbuild';
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 
 const watch = process.argv.includes('--watch');
 // Debug builds add a postMessage bridge so automation can drive the extension from a reddit.com tab.
 const debugBridge = process.argv.includes('--debug-bridge');
 const outdir = 'dist';
 const serverOutdir = 'dist-server';
+const publicDir = `${serverOutdir}/public`;
 
 const entryPoints = {
   background: 'src/background/index.ts',
@@ -20,6 +22,7 @@ const entryPoints = {
 await rm(outdir, { recursive: true, force: true });
 await rm(serverOutdir, { recursive: true, force: true });
 await mkdir(outdir, { recursive: true });
+await mkdir(publicDir, { recursive: true });
 
 async function copyStatic() {
   const manifest = JSON.parse(await readFile('manifest.json', 'utf8'));
@@ -33,6 +36,10 @@ async function copyStatic() {
   }
   await writeFile(`${outdir}/manifest.json`, JSON.stringify(manifest, null, 2));
   await cp('static', outdir, { recursive: true });
+  for (const f of ['common.css', 'options.css', 'options.html', 'review.css', 'review.html']) {
+    await cp(`static/${f}`, `${publicDir}/${f}`);
+  }
+  await cp('src/server/public', publicDir, { recursive: true });
 }
 
 const options = {
@@ -47,7 +54,7 @@ const options = {
   jsx: 'automatic',
   jsxImportSource: 'preact',
   logLevel: 'info',
-  define: { __DEBUG_BRIDGE__: String(debugBridge) },
+  define: { __DEBUG_BRIDGE__: String(debugBridge), __SERVER_BUILD__: 'false' },
 };
 
 // Kept out of dist/: that folder is the extension package. Zod is bundled, so no node_modules at runtime.
@@ -61,10 +68,28 @@ const serverOptions = {
   sourcemap: watch ? 'inline' : false,
   legalComments: 'none',
   logLevel: 'info',
+  define: { __SERVER_BUILD__: 'true' },
+};
+
+// The options and review pages again, for the server. Removed with the extension's copies in #23.
+const useServerBackend = {
+  name: 'server-backend',
+  setup(build) {
+    build.onResolve({ filter: /\/common\/backend$|^\.\/backend$/ }, () => ({
+      path: resolve('src/ui/common/backend.server.ts'),
+    }));
+  },
+};
+const pageOptions = {
+  ...options,
+  entryPoints: { options: entryPoints.options, review: entryPoints.review },
+  outdir: publicDir,
+  define: { __SERVER_BUILD__: 'true' },
+  plugins: [useServerBackend],
 };
 
 await copyStatic();
-for (const o of [options, serverOptions]) {
+for (const o of [options, serverOptions, pageOptions]) {
   if (watch) await (await esbuild.context(o)).watch();
   else await esbuild.build(o);
 }

@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'preact/hooks';
-import { rpc } from '../../shared/rpc';
+import { useState } from 'preact/hooks';
 import { subredditUrl } from '../../shared/names';
 import type { AttributeDef, AttributeValue, Settings, SubredditRecord } from '../../shared/types';
+import { rpc } from '../common/backend';
 import { formatAgo, formatNumber, formatValue } from '../common/format';
+import { usePoll } from '../common/hooks';
 
 export function Drawer({
   name,
@@ -17,11 +18,7 @@ export function Drawer({
   const [profileId, setProfileId] = useState(settings.defaultProfileId ?? '');
   const [note, setNote] = useState('');
   const reload = () => void rpc('getSubreddit', { name }).then(setRec);
-  useEffect(() => {
-    reload();
-    const id = setInterval(reload, 3000);
-    return () => clearInterval(id);
-  }, [name]);
+  usePoll(reload, 3000, [name]);
 
   if (!rec) return <aside class="drawer">Loading…</aside>;
   const m = rec.meta;

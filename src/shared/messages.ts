@@ -91,7 +91,14 @@ export interface TestResult {
 export interface RpcMethods {
   getStatus: {
     params: void;
-    result: { counts: QueueCounts; runtime: RuntimeStatus; rubricVersion: string; paused: boolean };
+    result: {
+      counts: QueueCounts;
+      runtime: RuntimeStatus;
+      rubricVersion: string;
+      paused: boolean;
+      /** Changes whenever stored data may have changed. */
+      revision: string;
+    };
   };
   listSubreddits: { params: void; result: SubredditRow[] };
   getSubreddit: { params: { name: string }; result: SubredditRecord | null };
